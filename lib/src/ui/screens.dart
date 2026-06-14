@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -12,6 +14,8 @@ import '../domain/app_models.dart';
 import '../domain/filter_helpers.dart';
 import '../services/provider_model_fetch_service.dart';
 import '../state/app_state.dart';
+import 'band_colors.dart';
+import 'theme.dart';
 
 extension L10nX on BuildContext {
   AppLocalizations get l10n => AppLocalizations.of(this);
@@ -214,16 +218,7 @@ class RecordScreen extends ConsumerWidget {
     final isStreaming = mode == TranscriptionMode.streaming;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(l10n.appTitle),
-        actions: [
-          IconButton(
-            tooltip: l10n.settings,
-            icon: const Icon(Icons.settings),
-            onPressed: () {},
-          ),
-        ],
-      ),
+      appBar: AppBar(title: Text(l10n.appTitle)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -332,19 +327,24 @@ class LogsScreen extends ConsumerStatefulWidget {
 class _LogsScreenState extends ConsumerState<LogsScreen> {
   LogStatus? _status;
   final _searchController = TextEditingController();
-  final _bandController = TextEditingController();
-  final _modeController = TextEditingController();
-  final _fromController = TextEditingController();
-  final _toController = TextEditingController();
+  Timer? _searchDebounce;
+  String? _band;
+  String? _mode;
+  DateTime? _from;
+  DateTime? _to;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
-    _bandController.dispose();
-    _modeController.dispose();
-    _fromController.dispose();
-    _toController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -363,7 +363,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               prefixIcon: const Icon(Icons.search),
               hintText: l10n.searchLogs,
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: _onSearchChanged,
           ),
           const SizedBox(height: 12),
           _CardSection(
@@ -372,6 +372,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               DropdownButtonFormField<LogStatus?>(
                 initialValue: _status,
                 decoration: InputDecoration(labelText: l10n.status),
+                hint: Text(l10n.all),
                 items: [
                   DropdownMenuItem(value: null, child: Text(l10n.all)),
                   for (final status in LogStatus.values)
@@ -384,33 +385,33 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
               ),
               const SizedBox(height: 12),
               _TwoColumnFields(
-                left: TextField(
-                  controller: _bandController,
-                  decoration: InputDecoration(labelText: l10n.band),
-                  onChanged: (_) => setState(() {}),
+                left: _BandDropdown(
+                  value: _band,
+                  includeAll: true,
+                  onChanged: (value) => setState(() => _band = value),
                 ),
-                right: TextField(
-                  controller: _modeController,
-                  decoration: InputDecoration(labelText: l10n.mode),
-                  onChanged: (_) => setState(() {}),
+                right: _ModeDropdown(
+                  value: _mode,
+                  includeAll: true,
+                  onChanged: (value) => setState(() => _mode = value),
                 ),
               ),
               _TwoColumnFields(
-                left: TextField(
-                  controller: _fromController,
-                  decoration: InputDecoration(
-                    labelText: l10n.fromDate,
-                    hintText: '2026-06-01',
-                  ),
-                  onChanged: (_) => setState(() {}),
+                left: _DatePickerField(
+                  label: l10n.fromDate,
+                  value: _from,
+                  onPick: (value) => setState(() => _from = value),
+                  onClear: _from == null
+                      ? null
+                      : () => setState(() => _from = null),
                 ),
-                right: TextField(
-                  controller: _toController,
-                  decoration: InputDecoration(
-                    labelText: l10n.toDate,
-                    hintText: '2026-06-30',
-                  ),
-                  onChanged: (_) => setState(() {}),
+                right: _DatePickerField(
+                  label: l10n.toDate,
+                  value: _to,
+                  onPick: (value) => setState(() => _to = value),
+                  onClear: _to == null
+                      ? null
+                      : () => setState(() => _to = null),
                 ),
               ),
               Align(
@@ -456,11 +457,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
   bool _matchesLogFilter(QsoDraft log) {
     final search = _searchController.text.trim().toUpperCase();
-    final band = _blankToNull(_bandController.text);
-    final mode = _blankToNull(_modeController.text);
-    final from = parseFilterStartDate(_fromController.text);
-    final to = parseFilterEndDate(_toController.text);
     final dateTime = log.dateTime.value;
+    final to = _inclusiveDateEnd(_to);
 
     final matchesSearch =
         search.isEmpty ||
@@ -470,9 +468,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
 
     return matchesSearch &&
         (_status == null || log.status == _status) &&
-        matchesFilterText(log.band.value, band) &&
-        matchesFilterText(log.mode.value, mode) &&
-        (from == null || (dateTime != null && !dateTime.isBefore(from))) &&
+        (_band == null || matchesFilterText(log.band.value, _band)) &&
+        (_mode == null || matchesFilterText(log.mode.value, _mode)) &&
+        (_from == null || (dateTime != null && !dateTime.isBefore(_from!))) &&
         (to == null || (dateTime != null && !dateTime.isAfter(to)));
   }
 
@@ -480,10 +478,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     setState(() {
       _status = null;
       _searchController.clear();
-      _bandController.clear();
-      _modeController.clear();
-      _fromController.clear();
-      _toController.clear();
+      _band = null;
+      _mode = null;
+      _from = null;
+      _to = null;
     });
   }
 }
@@ -645,17 +643,13 @@ class ExportScreen extends ConsumerStatefulWidget {
 class _ExportScreenState extends ConsumerState<ExportScreen> {
   _ExportFormat _format = _ExportFormat.adif;
   LogStatus? _status = LogStatus.confirmed;
-  final _bandController = TextEditingController();
-  final _modeController = TextEditingController();
-  final _fromController = TextEditingController();
-  final _toController = TextEditingController();
+  String? _band;
+  String? _mode;
+  DateTime? _from;
+  DateTime? _to;
 
   @override
   void dispose() {
-    _bandController.dispose();
-    _modeController.dispose();
-    _fromController.dispose();
-    _toController.dispose();
     super.dispose();
   }
 
@@ -707,6 +701,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               DropdownButtonFormField<LogStatus?>(
                 initialValue: _status,
                 decoration: InputDecoration(labelText: l10n.status),
+                hint: Text(l10n.all),
                 items: [
                   DropdownMenuItem(value: null, child: Text(l10n.all)),
                   for (final status in LogStatus.values)
@@ -719,33 +714,41 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               ),
               const SizedBox(height: 12),
               _TwoColumnFields(
-                left: TextField(
-                  controller: _bandController,
-                  decoration: InputDecoration(labelText: l10n.band),
-                  onChanged: (_) => setState(() {}),
+                left: _BandDropdown(
+                  value: _band,
+                  includeAll: true,
+                  onChanged: (value) => setState(() => _band = value),
                 ),
-                right: TextField(
-                  controller: _modeController,
-                  decoration: InputDecoration(labelText: l10n.mode),
-                  onChanged: (_) => setState(() {}),
+                right: _ModeDropdown(
+                  value: _mode,
+                  includeAll: true,
+                  onChanged: (value) => setState(() => _mode = value),
                 ),
               ),
               _TwoColumnFields(
-                left: TextField(
-                  controller: _fromController,
-                  decoration: InputDecoration(
-                    labelText: l10n.fromDate,
-                    hintText: '2026-06-01',
-                  ),
-                  onChanged: (_) => setState(() {}),
+                left: _DatePickerField(
+                  label: l10n.fromDate,
+                  value: _from,
+                  onPick: (value) => setState(() => _from = value),
+                  onClear: _from == null
+                      ? null
+                      : () => setState(() => _from = null),
                 ),
-                right: TextField(
-                  controller: _toController,
-                  decoration: InputDecoration(
-                    labelText: l10n.toDate,
-                    hintText: '2026-06-30',
-                  ),
-                  onChanged: (_) => setState(() {}),
+                right: _DatePickerField(
+                  label: l10n.toDate,
+                  value: _to,
+                  onPick: (value) => setState(() => _to = value),
+                  onClear: _to == null
+                      ? null
+                      : () => setState(() => _to = null),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _clearFilters,
+                  icon: const Icon(Icons.filter_alt_off),
+                  label: Text(l10n.clearFilters),
                 ),
               ),
             ],
@@ -754,7 +757,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           Center(
             child: Text(
               '$selectedCount ${l10n.selectedForExport}',
-              style: Theme.of(context).textTheme.headlineSmall,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -811,11 +816,21 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   ExportFilter _currentFilter() {
     return ExportFilter(
       status: _status,
-      from: parseFilterStartDate(_fromController.text),
-      to: parseFilterEndDate(_toController.text),
-      band: _blankToNull(_bandController.text),
-      mode: _blankToNull(_modeController.text),
+      from: _from,
+      to: _inclusiveDateEnd(_to),
+      band: _band,
+      mode: _mode,
     );
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _status = null;
+      _band = null;
+      _mode = null;
+      _from = null;
+      _to = null;
+    });
   }
 
   Future<void> _exportToFile() async {
@@ -891,80 +906,74 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _CardSection(
-            title: l10n.language,
-            children: [
-              SegmentedButton<AppLocaleMode>(
-                segments: [
-                  ButtonSegment(
-                    value: AppLocaleMode.system,
-                    label: Text(l10n.followSystem),
-                  ),
-                  ButtonSegment(
-                    value: AppLocaleMode.zh,
-                    label: Text(l10n.simplifiedChinese),
-                  ),
-                  ButtonSegment(
-                    value: AppLocaleMode.en,
-                    label: Text(l10n.english),
-                  ),
-                ],
-                selected: {localeMode},
-                onSelectionChanged: (selection) {
-                  ref
-                      .read(appSettingsProvider.notifier)
-                      .setLocaleMode(selection.first);
-                },
-              ),
-            ],
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.system,
+            groupValue: localeMode,
+            title: l10n.followSystem,
+            subtitle: l10n.followSystemDesc,
+            icon: Icons.language,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
+          ),
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.zh,
+            groupValue: localeMode,
+            title: l10n.simplifiedChinese,
+            subtitle: l10n.simplifiedChineseDesc,
+            icon: Icons.translate,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
+          ),
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.en,
+            groupValue: localeMode,
+            title: l10n.english,
+            subtitle: l10n.englishDesc,
+            icon: Icons.translate,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
           ),
           const SizedBox(height: 16),
-          _CardSection(
-            title: l10n.transcriptionMode,
-            children: [
-              SegmentedButton<TranscriptionMode>(
-                segments: [
-                  ButtonSegment(
-                    value: TranscriptionMode.streaming,
-                    label: Text(l10n.streamingMode),
-                  ),
-                  ButtonSegment(
-                    value: TranscriptionMode.afterQso,
-                    label: Text(l10n.afterQsoMode),
-                  ),
-                ],
-                selected: {transcriptionMode},
-                onSelectionChanged: (selection) {
-                  ref
-                      .read(appSettingsProvider.notifier)
-                      .setTranscriptionMode(selection.first);
-                },
-              ),
-            ],
+          _ChoiceCard<TranscriptionMode>(
+            value: TranscriptionMode.streaming,
+            groupValue: transcriptionMode,
+            title: l10n.streamingMode,
+            subtitle: l10n.streamingModeDesc,
+            icon: Icons.mic,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setTranscriptionMode(value),
+          ),
+          _ChoiceCard<TranscriptionMode>(
+            value: TranscriptionMode.afterQso,
+            groupValue: transcriptionMode,
+            title: l10n.afterQsoMode,
+            subtitle: l10n.afterQsoModeDesc,
+            icon: Icons.upload_file,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setTranscriptionMode(value),
           ),
           const SizedBox(height: 16),
-          _CardSection(
-            title: l10n.failureHandling,
-            children: [
-              SegmentedButton<FailureHandling>(
-                segments: [
-                  ButtonSegment(
-                    value: FailureHandling.alert,
-                    label: Text(l10n.showErrors),
-                  ),
-                  ButtonSegment(
-                    value: FailureHandling.silent,
-                    label: Text(l10n.degradeSilently),
-                  ),
-                ],
-                selected: {failureHandling},
-                onSelectionChanged: (selection) {
-                  ref
-                      .read(appSettingsProvider.notifier)
-                      .setFailureHandling(selection.first);
-                },
-              ),
-            ],
+          _ChoiceCard<FailureHandling>(
+            value: FailureHandling.alert,
+            groupValue: failureHandling,
+            title: l10n.showErrors,
+            subtitle: l10n.showErrorsDesc,
+            icon: Icons.warning_amber,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setFailureHandling(value),
+          ),
+          _ChoiceCard<FailureHandling>(
+            value: FailureHandling.silent,
+            groupValue: failureHandling,
+            title: l10n.degradeSilently,
+            subtitle: l10n.degradeSilentlyDesc,
+            icon: Icons.visibility_off,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setFailureHandling(value),
           ),
           const SizedBox(height: 16),
           _CardSection(
@@ -1147,6 +1156,7 @@ class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     final providersState = ref.watch(providerProfilesProvider);
     final models = ref
         .watch(modelOptionsProvider)
@@ -1211,7 +1221,7 @@ class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
                           provider.hasApiKey
                               ? Icons.key
                               : Icons.key_off_outlined,
-                          color: provider.hasApiKey ? Colors.green : null,
+                          color: provider.hasApiKey ? osc.phosphor : null,
                         ),
                       ),
                       IconButton(
@@ -1315,11 +1325,12 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
     final l10n = context.l10n;
     final disabled = _busy || _loadingInitial;
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: Text(
         widget.provider == null ? l10n.addProvider : l10n.editProvider,
       ),
-      content: SizedBox(
-        width: 560,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1331,10 +1342,17 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
               ],
               DropdownButtonFormField<String>(
                 initialValue: _providerType,
-                decoration: InputDecoration(labelText: l10n.providerType),
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: l10n.providerType,
+                  helperText: l10n.providerTypeHint,
+                ),
                 items: [
                   for (final type in _providerTypes)
-                    DropdownMenuItem(value: type, child: Text(type)),
+                    DropdownMenuItem(
+                      value: type,
+                      child: Text(type, overflow: TextOverflow.ellipsis),
+                    ),
                 ],
                 onChanged: disabled
                     ? null
@@ -1351,24 +1369,52 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
                         });
                       },
               ),
+              if (widget.provider == null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  l10n.providerTemplate,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _templateChip('OpenAI', () => applyTemplate('OpenAI')),
+                    _templateChip('DeepSeek', () => applyTemplate('DeepSeek')),
+                    _templateChip('Zhipu', () => applyTemplate('Zhipu')),
+                    _templateChip('Qwen', () => applyTemplate('Qwen')),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               TextField(
                 controller: _nameController,
                 enabled: !disabled,
-                decoration: InputDecoration(labelText: l10n.displayName),
+                decoration: InputDecoration(
+                  labelText: l10n.displayName,
+                  helperText: l10n.displayNameHint,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _baseUrlController,
                 enabled: !disabled,
-                decoration: InputDecoration(labelText: l10n.baseUrl),
+                keyboardType: TextInputType.url,
+                decoration: InputDecoration(
+                  labelText: l10n.baseUrl,
+                  helperText: l10n.baseUrlHint,
+                ),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _apiKeyController,
                 enabled: !disabled,
                 obscureText: true,
-                decoration: InputDecoration(labelText: l10n.apiKey),
+                decoration: InputDecoration(
+                  labelText: l10n.apiKey,
+                  helperText: l10n.apiKeyHint,
+                ),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -1429,9 +1475,17 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
               TextField(
                 controller: _manualModelController,
                 enabled: !disabled,
-                decoration: InputDecoration(labelText: l10n.modelName),
+                decoration: InputDecoration(
+                  labelText: l10n.modelName,
+                  helperText: l10n.modelNameHint,
+                ),
               ),
               const SizedBox(height: 8),
+              Text(
+                l10n.capabilityHint,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              const SizedBox(height: 6),
               Wrap(
                 spacing: 8,
                 children: [
@@ -1529,6 +1583,19 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
       setState(() => _loadingInitial = false);
       _showSnack(_errorLabel(context, '$error'));
     }
+  }
+
+  void applyTemplate(String type) {
+    setState(() {
+      _providerType = type;
+      final defaultBaseUrl = _defaultBaseUrlForType(type);
+      if (defaultBaseUrl != null) {
+        _baseUrlController.text = defaultBaseUrl;
+      }
+      if (_nameController.text.trim().isEmpty) {
+        _nameController.text = type;
+      }
+    });
   }
 
   Future<void> _testConnection() async {
@@ -1863,10 +1930,7 @@ class QsoReviewScreen extends ConsumerStatefulWidget {
 class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late LogStatus status = widget.draft.status;
   late final TextEditingController _callsignController;
-  late final TextEditingController _dateTimeController;
-  late final TextEditingController _bandController;
   late final TextEditingController _frequencyController;
-  late final TextEditingController _modeController;
   late final TextEditingController _sentRstController;
   late final TextEditingController _receivedRstController;
   late final TextEditingController _nameController;
@@ -1874,6 +1938,11 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late final TextEditingController _rigController;
   late final TextEditingController _antennaController;
   late final TextEditingController _notesController;
+  late DateTime? _dateTime;
+  late String? _band;
+  late String? _mode;
+  bool _bandSuggested = false;
+  String? _frequencyError;
   late String? _audioPath;
   late String? _rawTranscript;
   bool _isAudioPlaying = false;
@@ -1884,12 +1953,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     super.initState();
     final draft = widget.draft;
     _callsignController = TextEditingController(text: draft.callsign.value);
-    _dateTimeController = TextEditingController(
-      text: draft.dateTime.value?.toIso8601String() ?? '',
-    );
-    _bandController = TextEditingController(text: draft.band.value);
     _frequencyController = TextEditingController(text: draft.frequency.value);
-    _modeController = TextEditingController(text: draft.mode.value);
     _sentRstController = TextEditingController(text: draft.sentRst.value);
     _receivedRstController = TextEditingController(
       text: draft.receivedRst.value,
@@ -1901,6 +1965,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       text: draft.antenna?.value ?? '',
     );
     _notesController = TextEditingController(text: draft.notes?.value ?? '');
+    _dateTime = draft.dateTime.value;
+    _band = draft.band.value.trim().isEmpty ? null : draft.band.value.trim();
+    _mode = draft.mode.value.trim().isEmpty ? null : draft.mode.value.trim();
     _audioPath = draft.audioPath;
     _rawTranscript = draft.rawTranscript;
   }
@@ -1908,10 +1975,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   @override
   void dispose() {
     _callsignController.dispose();
-    _dateTimeController.dispose();
-    _bandController.dispose();
     _frequencyController.dispose();
-    _modeController.dispose();
     _sentRstController.dispose();
     _receivedRstController.dispose();
     _nameController.dispose();
@@ -1930,7 +1994,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.qsoReview)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           DropdownButtonFormField<LogStatus>(
             initialValue: status,
@@ -1949,85 +2013,178 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               }
             },
           ),
-          const SizedBox(height: 12),
-          _ReviewField(
-            label: l10n.callsign,
-            controller: _callsignController,
-            requiredField: true,
-          ),
-          _ReviewField(
-            label: l10n.dateTime,
-            controller: _dateTimeController,
-            requiredField: true,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              l10n.bandOrFrequencyRequired,
-              style: Theme.of(context).textTheme.labelMedium,
-            ),
-          ),
-          _TwoColumnFields(
-            left: _ReviewField(label: l10n.band, controller: _bandController),
-            right: _ReviewField(
-              label: l10n.frequency,
-              controller: _frequencyController,
-            ),
-          ),
-          _ReviewField(
-            label: l10n.mode,
-            controller: _modeController,
-            requiredField: true,
-          ),
-          _TwoColumnFields(
-            left: _ReviewField(
-              label: l10n.sentRst,
-              controller: _sentRstController,
-              requiredField: true,
-            ),
-            right: _ReviewField(
-              label: l10n.receivedRst,
-              controller: _receivedRstController,
-              requiredField: true,
-            ),
-          ),
-          _ReviewField(label: l10n.name, controller: _nameController),
-          _ReviewField(label: l10n.qth, controller: _qthController),
-          _ReviewField(label: l10n.rig, controller: _rigController),
-          _ReviewField(label: l10n.antenna, controller: _antennaController),
-          _ReviewField(
-            label: l10n.notes,
-            controller: _notesController,
-            maxLines: 3,
-          ),
-          const SizedBox(height: 12),
-          _RetainedAudioCard(
-            title: l10n.audioLog,
-            path: _audioPath,
-            missingText: l10n.noAudioFile,
-            isPlaying: _isAudioPlaying,
-            errorText: _audioPlaybackError,
-            playLabel: l10n.playAudio,
-            stopLabel: l10n.stopAudio,
-            deleteLabel: l10n.deleteRetainedAudio,
-            onPlayPressed: _audioPath == null ? null : _toggleAudioPlayback,
-            onDelete: _audioPath == null ? null : _deleteRetainedAudio,
-          ),
-          const SizedBox(height: 12),
-          _RetainedDataCard(
-            title: l10n.originalTranscript,
-            text: _rawTranscript?.trim().isNotEmpty ?? false
-                ? _rawTranscript!
-                : l10n.noRawTranscript,
-            icon: Icons.notes,
-            deleteLabel: l10n.deleteRawTranscript,
-            onDelete: _rawTranscript?.trim().isNotEmpty ?? false
-                ? _deleteRawTranscript
-                : null,
+          const SizedBox(height: 16),
+          _CardSection(
+            title: l10n.contactInfo,
+            children: [
+              _ReviewField(
+                label: l10n.callsign,
+                controller: _callsignController,
+                requiredField: true,
+              ),
+              GestureDetector(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: _dateTime ?? DateTime.now(),
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime(2100),
+                  );
+                  if (date == null || !mounted) return;
+                  if (!context.mounted) return;
+                  final time = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(
+                      _dateTime ?? DateTime.now(),
+                    ),
+                  );
+                  if (!mounted) return;
+                  setState(() {
+                    _dateTime = time == null
+                        ? date
+                        : DateTime(
+                            date.year,
+                            date.month,
+                            date.day,
+                            time.hour,
+                            time.minute,
+                          );
+                  });
+                },
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: l10n.dateTime,
+                    suffixIcon: const Icon(Icons.event, size: 18),
+                  ),
+                  child: Text(
+                    _dateTime == null ? '—' : _formatDateTime(_dateTime!),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                child: Text(
+                  l10n.bandOrFrequencyRequired,
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ),
+              _TwoColumnFields(
+                left: _BandDropdown(
+                  value: _band,
+                  helperText: _bandSuggested ? l10n.suggestedBand : null,
+                  onChanged: (value) => setState(() {
+                    _band = value;
+                    _bandSuggested = false;
+                  }),
+                ),
+                right: TextFormField(
+                  controller: _frequencyController,
+                  decoration: InputDecoration(
+                    labelText: l10n.frequency,
+                    errorText: _frequencyError,
+                    suffixText: 'MHz',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: (value) => _handleFrequencyChanged(value, l10n),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _ModeDropdown(
+                value: _mode,
+                onChanged: (value) => setState(() => _mode = value),
+              ),
+              const SizedBox(height: 12),
+              _TwoColumnFields(
+                left: _ReviewField(
+                  label: l10n.sentRst,
+                  controller: _sentRstController,
+                  requiredField: true,
+                ),
+                right: _ReviewField(
+                  label: l10n.receivedRst,
+                  controller: _receivedRstController,
+                  requiredField: true,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          _CardSection(
+            title: l10n.operatorInfo,
+            children: [
+              _TwoColumnFields(
+                left: _ReviewField(
+                  label: l10n.name,
+                  controller: _nameController,
+                ),
+                right: _ReviewField(
+                  label: l10n.qth,
+                  controller: _qthController,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _CardSection(
+            title: l10n.stationInfo,
+            children: [
+              _TwoColumnFields(
+                left: _ReviewField(label: l10n.rig, controller: _rigController),
+                right: _ReviewField(
+                  label: l10n.antenna,
+                  controller: _antennaController,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _CardSection(
+            title: l10n.notesSection,
+            children: [
+              _ReviewField(
+                label: l10n.notes,
+                controller: _notesController,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              _RetainedAudioCard(
+                title: l10n.audioLog,
+                path: _audioPath,
+                missingText: l10n.noAudioFile,
+                isPlaying: _isAudioPlaying,
+                errorText: _audioPlaybackError,
+                playLabel: l10n.playAudio,
+                stopLabel: l10n.stopAudio,
+                deleteLabel: l10n.deleteRetainedAudio,
+                onPlayPressed: _audioPath == null ? null : _toggleAudioPlayback,
+                onDelete: _audioPath == null ? null : _deleteRetainedAudio,
+              ),
+              const SizedBox(height: 12),
+              _RetainedDataCard(
+                title: l10n.originalTranscript,
+                text: _rawTranscript?.trim().isNotEmpty ?? false
+                    ? _rawTranscript!
+                    : l10n.noRawTranscript,
+                icon: Icons.notes,
+                deleteLabel: l10n.deleteRawTranscript,
+                onDelete: _rawTranscript?.trim().isNotEmpty ?? false
+                    ? _deleteRawTranscript
+                    : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: FilledButton.icon(
             onPressed: () async {
+              if (!_validateFrequency(l10n)) {
+                return;
+              }
               final updated = _buildDraft();
               if ((status == LogStatus.confirmed ||
                       status == LogStatus.exported) &&
@@ -2051,21 +2208,54 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
             icon: const Icon(Icons.save),
             label: Text(l10n.confirmAndSave),
           ),
-        ],
+        ),
       ),
     );
   }
 
+  void _handleFrequencyChanged(String value, AppLocalizations l10n) {
+    final parsed = double.tryParse(value.trim());
+    final suggestedBand = parsed == null ? null : _suggestBand(parsed);
+    setState(() {
+      _frequencyError = _frequencyErrorText(value, l10n);
+      if (suggestedBand != null && _band == null) {
+        _band = suggestedBand;
+        _bandSuggested = true;
+      }
+    });
+  }
+
+  bool _validateFrequency(AppLocalizations l10n) {
+    final error = _frequencyErrorText(_frequencyController.text, l10n);
+    setState(() => _frequencyError = error);
+    return error == null;
+  }
+
+  String? _frequencyErrorText(String value, AppLocalizations l10n) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    final parsed = double.tryParse(trimmed);
+    if (parsed == null || parsed < 0.1 || parsed > 30000) {
+      return l10n.invalidFrequency;
+    }
+    return null;
+  }
+
   QsoDraft _buildDraft() {
     final draft = widget.draft;
-    final parsedDateTime = DateTime.tryParse(_dateTimeController.text.trim());
     return QsoDraft(
       id: draft.id,
       callsign: _editedField(_callsignController.text),
-      dateTime: QsoField(value: parsedDateTime, userEdited: true),
-      band: _editedField(_bandController.text),
+      dateTime: QsoField(value: _dateTime, userEdited: true),
+      band: _band == null
+          ? const QsoField(value: '')
+          : QsoField(value: _band!, userEdited: true),
       frequency: _editedField(_frequencyController.text),
-      mode: _editedField(_modeController.text),
+      mode: _mode == null
+          ? const QsoField(value: '')
+          : QsoField(value: _mode!, userEdited: true),
       sentRst: _editedField(_sentRstController.text),
       receivedRst: _editedField(_receivedRstController.text),
       status: status,
@@ -2093,16 +2283,37 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       return;
     }
     await ref.read(audioPlaybackServiceProvider).stop();
-    await ref
+    final trashFiles = await ref
         .read(qsoLogProvider.notifier)
         .deleteRetainedAudio(qsoId: widget.draft.id, path: audioPath);
-    if (mounted) {
-      setState(() {
-        _audioPath = null;
-        _isAudioPlaying = false;
-        _audioPlaybackError = null;
-      });
+    if (!mounted) {
+      return;
     }
+    setState(() {
+      _audioPath = null;
+      _isAudioPlaying = false;
+      _audioPlaybackError = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.l10n.retainedAudioDeleted),
+        action: SnackBarAction(
+          label: context.l10n.undo,
+          onPressed: () async {
+            await ref
+                .read(qsoLogProvider.notifier)
+                .restoreRetainedAudio(
+                  qsoId: widget.draft.id,
+                  path: audioPath,
+                  trashFiles: trashFiles,
+                );
+            if (mounted) {
+              setState(() => _audioPath = audioPath);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleAudioPlayback() async {
@@ -2144,6 +2355,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   }
 
   Future<void> _deleteRawTranscript() async {
+    final previousText = _rawTranscript;
+    final previousQsoId = widget.draft.id;
+    final previousImportId = widget.importJobId;
     final confirmed = await _confirmDestructiveAction(
       context,
       title: context.l10n.deleteRawTranscript,
@@ -2152,14 +2366,50 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     if (!confirmed) {
       return;
     }
+    if (!mounted) {
+      return;
+    }
+    final previousImportRawText = previousImportId == null
+        ? null
+        : await ref
+              .read(importJobsProvider.notifier)
+              .rawTextForJob(previousImportId);
     await ref.read(qsoLogProvider.notifier).clearRawTranscript(widget.draft.id);
-    final importJobId = widget.importJobId;
-    if (importJobId != null) {
-      await ref.read(importJobsProvider.notifier).clearRawText(importJobId);
+    if (previousImportId != null) {
+      await ref
+          .read(importJobsProvider.notifier)
+          .clearRawText(previousImportId);
     }
-    if (mounted) {
-      setState(() => _rawTranscript = null);
+    if (!mounted) {
+      return;
     }
+    setState(() => _rawTranscript = null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(context.l10n.rawTranscriptDeleted),
+        action: SnackBarAction(
+          label: context.l10n.undo,
+          onPressed: () async {
+            if (previousQsoId != null) {
+              await ref
+                  .read(qsoLogProvider.notifier)
+                  .restoreRawTranscript(
+                    qsoId: previousQsoId,
+                    rawTranscript: previousText,
+                  );
+            }
+            if (previousImportId != null) {
+              await ref
+                  .read(importJobsProvider.notifier)
+                  .restoreRawText(previousImportId, previousImportRawText);
+            }
+            if (mounted) {
+              setState(() => _rawTranscript = previousText);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   QsoField<String> _editedField(String value) {
@@ -2183,12 +2433,33 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          CircleAvatar(radius: 16, child: Text('$number')),
-          const SizedBox(width: 12),
+          Container(
+            width: 3,
+            height: 18,
+            decoration: BoxDecoration(
+              color: osc.phosphor,
+              boxShadow: [
+                BoxShadow(
+                  color: osc.phosphor.withAlpha(80),
+                  blurRadius: 6,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '[${number.toString().padLeft(2, '0')}]',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: osc.phosphorDim),
+          ),
+          const SizedBox(width: 10),
           Text(title, style: Theme.of(context).textTheme.titleLarge),
         ],
       ),
@@ -2244,7 +2515,11 @@ class _ChoiceCard<T> extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (selected) const Icon(Icons.check_circle_outline),
+                if (selected)
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
               ],
             ),
           ),
@@ -2269,33 +2544,131 @@ class _StatusPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final minutes = elapsed.inMinutes.toString().padLeft(2, '0');
     final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
+    return RepaintBoundary(
+      child: Semantics(
+        label:
+            '$title ${active ? "recording" : "idle"} $minutes minutes $seconds seconds',
+        child: Card(
+          color: active
+              ? osc.phosphor.withAlpha(20)
+              : Theme.of(context).colorScheme.surface,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Stack(
               children: [
-                Icon(
-                  Icons.circle,
-                  size: 12,
-                  color: active ? Colors.red : Colors.grey,
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: _ScopeGridPainter(
+                      gridColor: osc.gridLine,
+                      traceColor: active
+                          ? osc.phosphor.withAlpha(120)
+                          : osc.trace.withAlpha(40),
+                      animateSeed: active ? elapsed.inMilliseconds / 1000 : 0,
+                      active: active,
+                    ),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Text(title, style: Theme.of(context).textTheme.labelLarge),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 2,
+                    color: active ? osc.phosphor : osc.gridLine,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.circle,
+                            size: 10,
+                            color: active ? osc.rec : osc.gridLine,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            active ? 'REC · $title' : title,
+                            style: Theme.of(context).textTheme.labelLarge
+                                ?.copyWith(color: active ? osc.amber : null),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '$minutes:$seconds',
+                        style: Theme.of(context).textTheme.displayMedium
+                            ?.copyWith(color: active ? osc.phosphor : null),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              '$minutes:$seconds',
-              style: Theme.of(context).textTheme.displayMedium,
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _ScopeGridPainter extends CustomPainter {
+  _ScopeGridPainter({
+    required this.gridColor,
+    required this.traceColor,
+    required this.animateSeed,
+    required this.active,
+  });
+
+  final Color gridColor;
+  final Color traceColor;
+  final double animateSeed;
+  final bool active;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = gridColor.withAlpha(60)
+      ..strokeWidth = 0.5;
+    const gridStep = 12.0;
+    for (double x = gridStep; x < size.width; x += gridStep) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = gridStep; y < size.height; y += gridStep) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+    if (!active) return;
+    final tracePaint = Paint()
+      ..color = traceColor
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    final path = Path();
+    final baseline = size.height * 0.5;
+    final amplitude = size.height * 0.18;
+    for (double x = 0; x <= size.width; x += 2) {
+      final t = (x / size.width) * 4 * math.pi + animateSeed * 4;
+      final y =
+          baseline +
+          amplitude * 0.6 * (0.5 * math.sin(t) + 0.5 * math.sin(t * 1.7));
+      if (x == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+    canvas.drawPath(path, tracePaint);
+  }
+
+  @override
+  bool shouldRepaint(_ScopeGridPainter oldDelegate) =>
+      oldDelegate.animateSeed != animateSeed ||
+      oldDelegate.active != active ||
+      oldDelegate.gridColor != gridColor ||
+      oldDelegate.traceColor != traceColor;
 }
 
 class _TranscriptCard extends StatelessWidget {
@@ -2342,8 +2715,14 @@ class _DraftCard extends StatelessWidget {
       trailing: Wrap(
         spacing: 8,
         children: [
-          _LegendDot(color: Colors.blue, label: l10n.aiFilled),
-          _LegendDot(color: Colors.grey, label: l10n.userEdited),
+          _LegendDot(
+            color: Theme.of(context).colorScheme.primary,
+            label: l10n.aiFilled,
+          ),
+          _LegendDot(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            label: l10n.userEdited,
+          ),
         ],
       ),
       children: [
@@ -2406,6 +2785,7 @@ class _FieldTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final needsReview = field?.needsReview ?? false;
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
@@ -2414,10 +2794,8 @@ class _FieldTile extends StatelessWidget {
         decoration: InputDecoration(
           labelText: requiredField ? '$label *' : label,
           helperText: needsReview ? context.l10n.lowConfidence : null,
-          helperStyle: needsReview
-              ? const TextStyle(color: Colors.orange)
-              : null,
-          fillColor: needsReview ? Colors.orange.withAlpha(20) : null,
+          helperStyle: needsReview ? TextStyle(color: osc.amber) : null,
+          fillColor: needsReview ? osc.amber.withAlpha(20) : null,
           filled: needsReview,
         ),
       ),
@@ -2462,44 +2840,76 @@ class _LogListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor(log.status);
-    return InkWell(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => QsoReviewScreen(draft: log)),
-      ),
-      child: Card(
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              Container(width: 4, color: color),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              log.callsign.value,
-                              style: Theme.of(context).textTheme.titleLarge,
+    final strip = bandColor(log.band.value);
+    final frequency = log.frequency.value.trim();
+    final band = log.band.value.trim();
+    final mode = log.mode.value.trim();
+    final meta = [
+      if (frequency.isNotEmpty) '$frequency MHz',
+      if (band.isNotEmpty) band,
+      if (mode.isNotEmpty) mode,
+    ].join(' · ');
+    return Semantics(
+      label:
+          '${log.callsign.value}, ${band.isNotEmpty ? band : "no band"}, '
+          '${mode.isNotEmpty ? mode : "no mode"}, '
+          'sent ${log.sentRst.value} received ${log.receivedRst.value}, '
+          '${_statusLabel(context, log.status)}',
+      button: true,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => QsoReviewScreen(draft: log)),
+        ),
+        child: Card(
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                Container(width: 4, color: strip),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                log.callsign.value,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
                             ),
+                            _StatusChip(status: log.status),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          meta.isEmpty ? '—' : meta,
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                           ),
-                          _StatusChip(status: log.status),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${log.frequency.value} MHz · ${log.band.value} · ${log.mode.value}',
-                      ),
-                      const SizedBox(height: 4),
-                      Text('${log.sentRst.value} / ${log.receivedRst.value}'),
-                    ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${log.sentRst.value} / ${log.receivedRst.value}',
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2891,13 +3301,16 @@ class _LegendDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.circle, color: color, size: 10),
-        const SizedBox(width: 4),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
-      ],
+    return Tooltip(
+      message: label,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, color: color, size: 10),
+          const SizedBox(width: 4),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
+      ),
     );
   }
 }
@@ -2909,7 +3322,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _statusColor(status);
+    final color = _statusColor(context, status);
     return Chip(
       label: Text(_statusLabel(context, status)),
       side: BorderSide(color: color),
@@ -3073,6 +3486,14 @@ String? _defaultBaseUrlForType(String type) {
   };
 }
 
+Widget _templateChip(String type, VoidCallback onPressed) {
+  return ActionChip(
+    label: Text(type),
+    avatar: const Icon(Icons.flash_on, size: 14),
+    onPressed: onPressed,
+  );
+}
+
 List<FetchedProviderModel> _mergeFetchedModels(
   List<FetchedProviderModel> existing,
   List<FetchedProviderModel> incoming,
@@ -3107,18 +3528,29 @@ Future<bool> _confirmDestructiveAction(
   required String title,
   required String message,
 }) async {
+  await HapticFeedback.heavyImpact();
+  if (!context.mounted) return false;
   final result = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (dialogContext) => AlertDialog(
       title: Text(title),
       content: Text(message),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: Text(
+            MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+          ),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            foregroundColor: Theme.of(dialogContext).colorScheme.onError,
+          ),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(dialogContext).pop(true);
+          },
           child: Text(context.l10n.delete),
         ),
       ],
@@ -3210,12 +3642,230 @@ String _statusLabel(BuildContext context, LogStatus status) {
   };
 }
 
-Color _statusColor(LogStatus status) {
+Color _statusColor(BuildContext context, LogStatus status) {
+  final osc = Theme.of(context).extension<OscilloscopeColors>()!;
   return switch (status) {
-    LogStatus.draft => Colors.grey,
-    LogStatus.needsReview => Colors.orange,
-    LogStatus.confirmed => Colors.green,
-    LogStatus.exported => Colors.blue,
-    LogStatus.failed => Colors.red,
+    LogStatus.draft => osc.statusDraft,
+    LogStatus.needsReview => osc.statusReview,
+    LogStatus.confirmed => osc.statusConfirmed,
+    LogStatus.exported => osc.statusExported,
+    LogStatus.failed => osc.statusFailed,
   };
+}
+
+String _formatDate(DateTime d) {
+  final y = d.year.toString();
+  final m = d.month.toString().padLeft(2, '0');
+  final day = d.day.toString().padLeft(2, '0');
+  return '$y-$m-$day';
+}
+
+String _formatDateTime(DateTime d) {
+  final date = _formatDate(d);
+  final hh = d.hour.toString().padLeft(2, '0');
+  final mm = d.minute.toString().padLeft(2, '0');
+  return '$date $hh:$mm';
+}
+
+DateTime? _inclusiveDateEnd(DateTime? date) {
+  if (date == null) {
+    return null;
+  }
+  return parseFilterEndDate(_formatDate(date));
+}
+
+String? _suggestBand(double mhz) {
+  const table = <(double, double, String)>[
+    (1.8, 2.0, '160m'),
+    (3.5, 4.0, '80m'),
+    (5.06, 5.45, '60m'),
+    (7.0, 7.3, '40m'),
+    (10.1, 10.2, '30m'),
+    (14.0, 14.35, '20m'),
+    (18.06, 18.17, '17m'),
+    (21.0, 21.45, '15m'),
+    (24.89, 24.99, '12m'),
+    (28.0, 29.7, '10m'),
+    (50.0, 54.0, '6m'),
+    (70.0, 71.0, '4m'),
+    (144.0, 148.0, '2m'),
+    (430.0, 440.0, '70cm'),
+  ];
+  for (final entry in table) {
+    if (mhz >= entry.$1 && mhz <= entry.$2) {
+      return entry.$3;
+    }
+  }
+  return null;
+}
+
+class _DatePickerField extends StatelessWidget {
+  const _DatePickerField({
+    required this.label,
+    required this.value,
+    required this.onPick,
+    this.onClear,
+  });
+
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime> onPick;
+  final VoidCallback? onClear;
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: value ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null && context.mounted) {
+      onPick(picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final clear = onClear;
+    return GestureDetector(
+      onTap: () => _open(context),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: clear == null
+              ? const Icon(Icons.event, size: 18)
+              : IconButton(
+                  tooltip: l10n.clearFilters,
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: clear,
+                ),
+        ),
+        child: Text(value == null ? l10n.all : _formatDate(value!)),
+      ),
+    );
+  }
+}
+
+class _BandDropdown extends StatelessWidget {
+  const _BandDropdown({
+    required this.value,
+    required this.onChanged,
+    this.includeAll = false,
+    this.helperText,
+  });
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+  final bool includeAll;
+  final String? helperText;
+
+  static const _bands = <String>[
+    '160m',
+    '80m',
+    '60m',
+    '40m',
+    '30m',
+    '20m',
+    '17m',
+    '15m',
+    '12m',
+    '10m',
+    '6m',
+    '4m',
+    '2m',
+    '1.25m',
+    '70cm',
+    '33cm',
+    '23cm',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final currentValue = _dropdownValue(value);
+    final bands = _dropdownOptions(_bands, currentValue);
+    return DropdownButtonFormField<String>(
+      initialValue: currentValue,
+      decoration: InputDecoration(
+        labelText: context.l10n.band,
+        helperText: helperText,
+      ),
+      hint: includeAll ? Text(context.l10n.all) : null,
+      isExpanded: true,
+      items: [
+        if (includeAll)
+          DropdownMenuItem<String>(value: null, child: Text(context.l10n.all)),
+        for (final band in bands)
+          DropdownMenuItem(
+            value: band,
+            child: Text(band, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _ModeDropdown extends StatelessWidget {
+  const _ModeDropdown({
+    required this.value,
+    required this.onChanged,
+    this.includeAll = false,
+  });
+
+  final String? value;
+  final ValueChanged<String?> onChanged;
+  final bool includeAll;
+
+  static const _modes = <String>[
+    'CW',
+    'SSB',
+    'LSB',
+    'USB',
+    'FM',
+    'AM',
+    'RTTY',
+    'PSK31',
+    'FT8',
+    'FT4',
+    'MFSK16',
+    'DV',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final currentValue = _dropdownValue(value);
+    final modes = _dropdownOptions(_modes, currentValue);
+    return DropdownButtonFormField<String>(
+      initialValue: currentValue,
+      decoration: InputDecoration(labelText: context.l10n.mode),
+      hint: includeAll ? Text(context.l10n.all) : null,
+      isExpanded: true,
+      items: [
+        if (includeAll)
+          DropdownMenuItem<String>(value: null, child: Text(context.l10n.all)),
+        for (final mode in modes)
+          DropdownMenuItem(
+            value: mode,
+            child: Text(mode, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onChanged,
+    );
+  }
+}
+
+String? _dropdownValue(String? value) {
+  final trimmed = value?.trim();
+  if (trimmed == null || trimmed.isEmpty) {
+    return null;
+  }
+  return trimmed;
+}
+
+List<String> _dropdownOptions(List<String> defaults, String? value) {
+  if (value == null || defaults.contains(value)) {
+    return defaults;
+  }
+  return [...defaults, value];
 }

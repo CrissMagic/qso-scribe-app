@@ -181,5 +181,21 @@
   "baseUrlRequired": "Base URL 不能为空",
   "modelListRequestFailed": "模型列表请求失败",
   "modelListEmpty": "模型列表响应为空",
-  "modelListAllCandidatesFailed": "所有模型列表端点均失败"
+  "modelListAllCandidatesFailed": "所有模型列表端点均失败",
+  "undo": "撤销",
+  "rawTranscriptDeleted": "已清除原始转写",
+  "retainedAudioDeleted": "已删除音频",
+  "contactInfo": "通联",
+  "operatorInfo": "操作员",
+  "stationInfo": "电台设备",
+  "notesSection": "备注",
+  "suggestedBand": "建议波段",
+  "invalidFrequency": "频率必须在 0.1 至 30000 MHz 之间",
+  "providerTypeHint": "如果不确定,选 OpenAI",
+  "baseUrlHint": "通常以 /v1 结尾,如 https://api.openai.com/v1",
+  "apiKeyHint": "从供应商控制台复制,本地存储,不会上传",
+  "displayNameHint": "随便起一个你认得出的名字",
+  "modelNameHint": "模型 ID,如 gpt-4o-mini / whisper-1",
+  "providerTemplate": "一键模板",
+  "capabilityHint": "勾选这个模型能做什么"
 }

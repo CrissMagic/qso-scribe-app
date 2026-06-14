@@ -445,13 +445,27 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
     await refresh();
   }
 
-  Future<void> deleteRetainedAudio({
+  Future<List<MapEntry<String, String>>> deleteRetainedAudio({
     required String? qsoId,
     required String path,
   }) async {
-    await _deleteOwnedFileIfExists(path);
+    final trashFiles = await _trashOwnedAudioFileIfExists(path);
     if (qsoId != null) {
       await ref.read(qsoRepositoryProvider).clearAudioPath(qsoId);
+      await refresh();
+    }
+    ref.invalidate(localDataSummaryProvider);
+    return trashFiles;
+  }
+
+  Future<void> restoreRetainedAudio({
+    required String? qsoId,
+    required String path,
+    required List<MapEntry<String, String>> trashFiles,
+  }) async {
+    await _restoreFromTrash(trashFiles);
+    if (qsoId != null) {
+      await ref.read(qsoRepositoryProvider).setAudioPath(qsoId, path);
       await refresh();
     }
     ref.invalidate(localDataSummaryProvider);
@@ -462,6 +476,17 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
       await ref.read(qsoRepositoryProvider).clearRawTranscript(qsoId);
       await refresh();
     }
+    ref.invalidate(localDataSummaryProvider);
+  }
+
+  Future<void> restoreRawTranscript({
+    required String qsoId,
+    required String? rawTranscript,
+  }) async {
+    await ref
+        .read(qsoRepositoryProvider)
+        .setRawTranscript(qsoId, rawTranscript);
+    await refresh();
     ref.invalidate(localDataSummaryProvider);
   }
 
@@ -655,12 +680,66 @@ class ImportJobsNotifier extends AsyncNotifier<List<ImportJob>> {
     state = await AsyncValue.guard(ref.read(importRepositoryProvider).listJobs);
     ref.invalidate(localDataSummaryProvider);
   }
+
+  Future<String?> rawTextForJob(String importJobId) async {
+    final job = await ref.read(importRepositoryProvider).findJob(importJobId);
+    return job?.rawText;
+  }
+
+  Future<void> restoreRawText(String importJobId, String? rawText) async {
+    await ref.read(importRepositoryProvider).setRawText(importJobId, rawText);
+    state = await AsyncValue.guard(ref.read(importRepositoryProvider).listJobs);
+    ref.invalidate(localDataSummaryProvider);
+  }
 }
 
 final importJobsProvider =
     AsyncNotifierProvider<ImportJobsNotifier, List<ImportJob>>(
       ImportJobsNotifier.new,
     );
+
+Future<List<MapEntry<String, String>>> _trashOwnedAudioFileIfExists(
+  String path,
+) async {
+  final appDir = await getApplicationDocumentsDirectory();
+  final appRoot = p.normalize(appDir.path);
+  final trashDir = Directory(p.join(appRoot, '.trash'));
+  final candidates = [
+    File(path),
+    if (p.extension(path).toLowerCase() == '.pcm')
+      File(p.setExtension(path, '.wav')),
+  ];
+  final trashFiles = <MapEntry<String, String>>[];
+  for (final file in candidates) {
+    if (!file.existsSync()) continue;
+    final filePath = p.normalize(file.absolute.path);
+    if (filePath != appRoot && !p.isWithin(appRoot, filePath)) continue;
+    if (!trashDir.existsSync()) {
+      await trashDir.create(recursive: true);
+    }
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final dest = p.join(trashDir.path, '${stamp}_${p.basename(filePath)}');
+    await file.rename(dest);
+    trashFiles.add(MapEntry(dest, filePath));
+  }
+  return trashFiles;
+}
+
+Future<void> _restoreFromTrash(
+  List<MapEntry<String, String>> trashFiles,
+) async {
+  if (trashFiles.isEmpty) return;
+  final appDir = await getApplicationDocumentsDirectory();
+  final appRoot = p.normalize(appDir.path);
+  for (final file in trashFiles) {
+    final src = File(file.key);
+    if (!src.existsSync()) continue;
+    final originalPath = p.normalize(file.value);
+    if (originalPath != appRoot && !p.isWithin(appRoot, originalPath)) continue;
+    await Directory(p.dirname(originalPath)).create(recursive: true);
+    await src.rename(originalPath);
+  }
+}
 
 Future<void> _deleteOwnedAudioFileIfExists(String path) async {
   final appDir = await getApplicationDocumentsDirectory();

@@ -557,4 +557,52 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get modelListAllCandidatesFailed => '所有模型列表端点均失败';
+
+  @override
+  String get undo => '撤销';
+
+  @override
+  String get rawTranscriptDeleted => '已清除原始转写';
+
+  @override
+  String get retainedAudioDeleted => '已删除音频';
+
+  @override
+  String get contactInfo => '通联';
+
+  @override
+  String get operatorInfo => '操作员';
+
+  @override
+  String get stationInfo => '电台设备';
+
+  @override
+  String get notesSection => '备注';
+
+  @override
+  String get suggestedBand => '建议波段';
+
+  @override
+  String get invalidFrequency => '频率必须在 0.1 至 30000 MHz 之间';
+
+  @override
+  String get providerTypeHint => '如果不确定,选 OpenAI';
+
+  @override
+  String get baseUrlHint => '通常以 /v1 结尾,如 https://api.openai.com/v1';
+
+  @override
+  String get apiKeyHint => '从供应商控制台复制,本地存储,不会上传';
+
+  @override
+  String get displayNameHint => '随便起一个你认得出的名字';
+
+  @override
+  String get modelNameHint => '模型 ID,如 gpt-4o-mini / whisper-1';
+
+  @override
+  String get providerTemplate => '一键模板';
+
+  @override
+  String get capabilityHint => '勾选这个模型能做什么';
 }

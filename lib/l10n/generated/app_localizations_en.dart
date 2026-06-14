@@ -583,4 +583,53 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modelListAllCandidatesFailed => 'All model list endpoints failed';
+
+  @override
+  String get undo => 'Undo';
+
+  @override
+  String get rawTranscriptDeleted => 'Raw transcript cleared';
+
+  @override
+  String get retainedAudioDeleted => 'Audio deleted';
+
+  @override
+  String get contactInfo => 'Contact';
+
+  @override
+  String get operatorInfo => 'Operator';
+
+  @override
+  String get stationInfo => 'Station';
+
+  @override
+  String get notesSection => 'Notes';
+
+  @override
+  String get suggestedBand => 'Suggested band';
+
+  @override
+  String get invalidFrequency => 'Frequency must be between 0.1 and 30000 MHz';
+
+  @override
+  String get providerTypeHint => 'If unsure, choose OpenAI';
+
+  @override
+  String get baseUrlHint => 'Ends with /v1, e.g. https://api.openai.com/v1';
+
+  @override
+  String get apiKeyHint =>
+      'Paste from provider console. Stored locally, never uploaded.';
+
+  @override
+  String get displayNameHint => 'Any label you recognize, e.g. My OpenAI';
+
+  @override
+  String get modelNameHint => 'Model ID, e.g. gpt-4o-mini / whisper-1';
+
+  @override
+  String get providerTemplate => 'Quick template';
+
+  @override
+  String get capabilityHint => 'Pick what this model can do';
 }

@@ -1189,6 +1189,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All model list endpoints failed'**
   String get modelListAllCandidatesFailed;
+
+  /// No description provided for @undo.
+  ///
+  /// In en, this message translates to:
+  /// **'Undo'**
+  String get undo;
+
+  /// No description provided for @rawTranscriptDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw transcript cleared'**
+  String get rawTranscriptDeleted;
+
+  /// No description provided for @retainedAudioDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio deleted'**
+  String get retainedAudioDeleted;
+
+  /// No description provided for @contactInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact'**
+  String get contactInfo;
+
+  /// No description provided for @operatorInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Operator'**
+  String get operatorInfo;
+
+  /// No description provided for @stationInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'Station'**
+  String get stationInfo;
+
+  /// No description provided for @notesSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get notesSection;
+
+  /// No description provided for @suggestedBand.
+  ///
+  /// In en, this message translates to:
+  /// **'Suggested band'**
+  String get suggestedBand;
+
+  /// No description provided for @invalidFrequency.
+  ///
+  /// In en, this message translates to:
+  /// **'Frequency must be between 0.1 and 30000 MHz'**
+  String get invalidFrequency;
+
+  /// No description provided for @providerTypeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'If unsure, choose OpenAI'**
+  String get providerTypeHint;
+
+  /// No description provided for @baseUrlHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ends with /v1, e.g. https://api.openai.com/v1'**
+  String get baseUrlHint;
+
+  /// No description provided for @apiKeyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste from provider console. Stored locally, never uploaded.'**
+  String get apiKeyHint;
+
+  /// No description provided for @displayNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Any label you recognize, e.g. My OpenAI'**
+  String get displayNameHint;
+
+  /// No description provided for @modelNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Model ID, e.g. gpt-4o-mini / whisper-1'**
+  String get modelNameHint;
+
+  /// No description provided for @providerTemplate.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick template'**
+  String get providerTemplate;
+
+  /// No description provided for @capabilityHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick what this model can do'**
+  String get capabilityHint;
 }
 
 class _AppLocalizationsDelegate

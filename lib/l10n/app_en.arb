@@ -181,5 +181,21 @@
   "baseUrlRequired": "Base URL is required",
   "modelListRequestFailed": "Model list request failed",
   "modelListEmpty": "Model list response was empty",
-  "modelListAllCandidatesFailed": "All model list endpoints failed"
+  "modelListAllCandidatesFailed": "All model list endpoints failed",
+  "undo": "Undo",
+  "rawTranscriptDeleted": "Raw transcript cleared",
+  "retainedAudioDeleted": "Audio deleted",
+  "contactInfo": "Contact",
+  "operatorInfo": "Operator",
+  "stationInfo": "Station",
+  "notesSection": "Notes",
+  "suggestedBand": "Suggested band",
+  "invalidFrequency": "Frequency must be between 0.1 and 30000 MHz",
+  "providerTypeHint": "If unsure, choose OpenAI",
+  "baseUrlHint": "Ends with /v1, e.g. https://api.openai.com/v1",
+  "apiKeyHint": "Paste from provider console. Stored locally, never uploaded.",
+  "displayNameHint": "Any label you recognize, e.g. My OpenAI",
+  "modelNameHint": "Model ID, e.g. gpt-4o-mini / whisper-1",
+  "providerTemplate": "Quick template",
+  "capabilityHint": "Pick what this model can do"
 }

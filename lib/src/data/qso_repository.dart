@@ -128,12 +128,38 @@ class QsoRepository {
     );
   }
 
+  Future<void> setAudioPath(String id, String path) async {
+    final db = await _database.instance;
+    await db.update(
+      'qso_logs',
+      {
+        'audio_path': path,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> clearRawTranscript(String id) async {
     final db = await _database.instance;
     await db.update(
       'qso_logs',
       {
         'raw_transcript': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> setRawTranscript(String id, String? rawTranscript) async {
+    final db = await _database.instance;
+    await db.update(
+      'qso_logs',
+      {
+        'raw_transcript': rawTranscript,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',

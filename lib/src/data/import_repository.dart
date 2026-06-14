@@ -15,6 +15,20 @@ class ImportRepository {
     return rows.map(_decodeJob).toList();
   }
 
+  Future<ImportJob?> findJob(String id) async {
+    final db = await _database.instance;
+    final rows = await db.query(
+      'import_jobs',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return _decodeJob(rows.single);
+  }
+
   Future<ImportJob> createJob({
     required ImportSourceType sourceType,
     String? sourcePath,
@@ -69,6 +83,19 @@ class ImportRepository {
       'import_jobs',
       {
         'raw_text': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> setRawText(String id, String? rawText) async {
+    final db = await _database.instance;
+    await db.update(
+      'import_jobs',
+      {
+        'raw_text': rawText,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
