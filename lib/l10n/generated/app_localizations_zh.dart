@@ -375,6 +375,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noAudioFile => '未保留音频文件';
 
   @override
+  String get playAudio => '播放音频';
+
+  @override
+  String get stopAudio => '停止播放';
+
+  @override
+  String get audioPlaybackFailed => '音频播放失败';
+
+  @override
   String get noRawTranscript => '未保留原始转写文本';
 
   @override

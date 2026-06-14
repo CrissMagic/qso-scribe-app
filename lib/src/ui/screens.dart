@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -1875,6 +1876,8 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late final TextEditingController _notesController;
   late String? _audioPath;
   late String? _rawTranscript;
+  bool _isAudioPlaying = false;
+  String? _audioPlaybackError;
 
   @override
   void initState() {
@@ -1916,6 +1919,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _rigController.dispose();
     _antennaController.dispose();
     _notesController.dispose();
+    unawaited(ref.read(audioPlaybackServiceProvider).stop());
     super.dispose();
   }
 
@@ -1997,11 +2001,16 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
             maxLines: 3,
           ),
           const SizedBox(height: 12),
-          _RetainedDataCard(
+          _RetainedAudioCard(
             title: l10n.audioLog,
-            text: _audioPath ?? l10n.noAudioFile,
-            icon: Icons.play_arrow,
+            path: _audioPath,
+            missingText: l10n.noAudioFile,
+            isPlaying: _isAudioPlaying,
+            errorText: _audioPlaybackError,
+            playLabel: l10n.playAudio,
+            stopLabel: l10n.stopAudio,
             deleteLabel: l10n.deleteRetainedAudio,
+            onPlayPressed: _audioPath == null ? null : _toggleAudioPlayback,
             onDelete: _audioPath == null ? null : _deleteRetainedAudio,
           ),
           const SizedBox(height: 12),
@@ -2083,11 +2092,54 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     if (!confirmed) {
       return;
     }
+    await ref.read(audioPlaybackServiceProvider).stop();
     await ref
         .read(qsoLogProvider.notifier)
         .deleteRetainedAudio(qsoId: widget.draft.id, path: audioPath);
     if (mounted) {
-      setState(() => _audioPath = null);
+      setState(() {
+        _audioPath = null;
+        _isAudioPlaying = false;
+        _audioPlaybackError = null;
+      });
+    }
+  }
+
+  Future<void> _toggleAudioPlayback() async {
+    final audioPath = _audioPath;
+    if (audioPath == null) {
+      return;
+    }
+
+    final service = ref.read(audioPlaybackServiceProvider);
+    if (_isAudioPlaying) {
+      await service.stop();
+      if (mounted) {
+        setState(() {
+          _isAudioPlaying = false;
+          _audioPlaybackError = null;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isAudioPlaying = true;
+      _audioPlaybackError = null;
+    });
+    try {
+      await service.play(audioPath);
+      if (mounted) {
+        setState(() => _isAudioPlaying = false);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isAudioPlaying = false;
+          _audioPlaybackError =
+              '${context.l10n.audioPlaybackFailed}: ${_errorLabel(context, '$error')}';
+        });
+      }
     }
   }
 
@@ -2726,6 +2778,65 @@ class _RetainedDataCard extends StatelessWidget {
             Expanded(child: SelectableText(text)),
           ],
         ),
+      ],
+    );
+  }
+}
+
+class _RetainedAudioCard extends StatelessWidget {
+  const _RetainedAudioCard({
+    required this.title,
+    required this.path,
+    required this.missingText,
+    required this.isPlaying,
+    required this.playLabel,
+    required this.stopLabel,
+    required this.deleteLabel,
+    this.errorText,
+    this.onPlayPressed,
+    this.onDelete,
+  });
+
+  final String title;
+  final String? path;
+  final String missingText;
+  final bool isPlaying;
+  final String playLabel;
+  final String stopLabel;
+  final String deleteLabel;
+  final String? errorText;
+  final VoidCallback? onPlayPressed;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return _CardSection(
+      title: title,
+      trailing: onDelete == null
+          ? null
+          : IconButton(
+              tooltip: deleteLabel,
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline),
+            ),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            IconButton.filledTonal(
+              tooltip: isPlaying ? stopLabel : playLabel,
+              onPressed: onPlayPressed,
+              icon: Icon(isPlaying ? Icons.stop : Icons.play_arrow),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: SelectableText(path ?? missingText)),
+          ],
+        ),
+        if (errorText != null) ...[
+          const SizedBox(height: 8),
+          Text(errorText!, style: TextStyle(color: colorScheme.error)),
+        ],
       ],
     );
   }

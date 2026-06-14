@@ -387,6 +387,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noAudioFile => 'No audio file retained';
 
   @override
+  String get playAudio => 'Play audio';
+
+  @override
+  String get stopAudio => 'Stop playback';
+
+  @override
+  String get audioPlaybackFailed => 'Audio playback failed';
+
+  @override
   String get noRawTranscript => 'No raw transcript retained';
 
   @override

@@ -830,6 +830,24 @@ abstract class AppLocalizations {
   /// **'No audio file retained'**
   String get noAudioFile;
 
+  /// No description provided for @playAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Play audio'**
+  String get playAudio;
+
+  /// No description provided for @stopAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop playback'**
+  String get stopAudio;
+
+  /// No description provided for @audioPlaybackFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio playback failed'**
+  String get audioPlaybackFailed;
+
   /// No description provided for @noRawTranscript.
   ///
   /// In en, this message translates to:

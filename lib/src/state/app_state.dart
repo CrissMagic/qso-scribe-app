@@ -16,6 +16,7 @@ import '../data/qso_repository.dart';
 import '../data/settings_repository.dart';
 import '../domain/app_models.dart';
 import '../services/heuristic_qso_structuring_service.dart';
+import '../services/local_audio_playback_service.dart';
 import '../services/provider_model_fetch_service.dart';
 import '../services/qso_processing_service.dart';
 import '../services/record_audio_capture_service.dart';
@@ -81,6 +82,12 @@ final localDataSummaryProvider = FutureProvider<LocalDataSummary>((ref) async {
 final audioCaptureServiceProvider = Provider<RecordAudioCaptureService>((ref) {
   final service = RecordAudioCaptureService();
   ref.onDispose(service.dispose);
+  return service;
+});
+
+final audioPlaybackServiceProvider = Provider<LocalAudioPlaybackService>((ref) {
+  final service = LocalAudioPlaybackService();
+  ref.onDispose(() => unawaited(service.stop()));
   return service;
 });
 
@@ -391,10 +398,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     if (settings.audioRetentionPolicy ==
             AudioRetentionPolicy.deleteAfterRecognition &&
         audioPath != null) {
-      final file = File(audioPath);
-      if (file.existsSync()) {
-        await file.delete();
-      }
+      await _deleteOwnedAudioFileIfExists(audioPath);
       return draft.copyWith(clearAudioPath: true);
     }
     return draft;
@@ -483,15 +487,7 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
   }
 
   Future<void> _deleteOwnedFileIfExists(String path) async {
-    final file = File(path);
-    if (file.existsSync()) {
-      final appDir = await getApplicationDocumentsDirectory();
-      final appRoot = p.normalize(appDir.path);
-      final filePath = p.normalize(file.absolute.path);
-      if (filePath == appRoot || p.isWithin(appRoot, filePath)) {
-        await file.delete();
-      }
-    }
+    await _deleteOwnedAudioFileIfExists(path);
   }
 }
 
@@ -571,10 +567,7 @@ class ImportJobsNotifier extends AsyncNotifier<List<ImportJob>> {
       if (settings.audioRetentionPolicy ==
               AudioRetentionPolicy.deleteAfterRecognition &&
           draft.audioPath != null) {
-        final file = File(draft.audioPath!);
-        if (file.existsSync()) {
-          await file.delete();
-        }
+        await _deleteOwnedAudioFileIfExists(draft.audioPath!);
         draft = draft.copyWith(clearAudioPath: true);
       }
       await repository.updateJob(id: job.id, status: ImportJobStatus.completed);
@@ -668,6 +661,26 @@ final importJobsProvider =
     AsyncNotifierProvider<ImportJobsNotifier, List<ImportJob>>(
       ImportJobsNotifier.new,
     );
+
+Future<void> _deleteOwnedAudioFileIfExists(String path) async {
+  final appDir = await getApplicationDocumentsDirectory();
+  final appRoot = p.normalize(appDir.path);
+  final candidates = [
+    File(path),
+    if (p.extension(path).toLowerCase() == '.pcm')
+      File(p.setExtension(path, '.wav')),
+  ];
+
+  for (final file in candidates) {
+    if (!file.existsSync()) {
+      continue;
+    }
+    final filePath = p.normalize(file.absolute.path);
+    if (filePath == appRoot || p.isWithin(appRoot, filePath)) {
+      await file.delete();
+    }
+  }
+}
 
 final modelOptionsProvider = FutureProvider<List<AiModelOption>>(
   (ref) => ref.watch(modelRepositoryProvider).listModels(),

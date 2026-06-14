@@ -8,6 +8,7 @@ import '../data/model_repository.dart';
 import '../data/provider_repository.dart';
 import '../domain/app_models.dart';
 import 'heuristic_qso_structuring_service.dart';
+import 'wav_audio.dart';
 
 class QsoProcessingService {
   QsoProcessingService({
@@ -229,6 +230,7 @@ class QsoProcessingService {
       throw StateError('audio_file_missing');
     }
 
+    final uploadPath = await playableAudioPathFor(audioPath);
     final baseUri = _baseUri(provider);
     final request =
         http.MultipartRequest(
@@ -238,7 +240,7 @@ class QsoProcessingService {
             ),
           )
           ..fields['model'] = model.name
-          ..files.add(await http.MultipartFile.fromPath('file', audioPath));
+          ..files.add(await http.MultipartFile.fromPath('file', uploadPath));
     final apiKey = provider.apiKey;
     if (apiKey != null && apiKey.isNotEmpty) {
       request.headers['Authorization'] = 'Bearer $apiKey';
