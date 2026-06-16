@@ -632,4 +632,40 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get capabilityHint => 'Pick what this model can do';
+
+  @override
+  String get softwareUpdate => 'Software update';
+
+  @override
+  String get softwareUpdateDesc => 'Check the latest version and release notes';
+
+  @override
+  String get checkUpdate => 'Check for updates';
+
+  @override
+  String get currentVersion => 'Current version';
+
+  @override
+  String get latestVersion => 'Latest version';
+
+  @override
+  String get upToDate => 'You are on the latest version';
+
+  @override
+  String get newVersionAvailable => 'A new version is available';
+
+  @override
+  String get updateNotes => 'Release notes';
+
+  @override
+  String get goToDownload => 'Download on GitHub';
+
+  @override
+  String get updateCheckFailed => 'Update check failed';
+
+  @override
+  String get noReleaseAvailable => 'No release is available yet';
+
+  @override
+  String get retry => 'Retry';
 }

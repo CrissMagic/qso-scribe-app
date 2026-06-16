@@ -5,14 +5,18 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../domain/app_models.dart';
 import '../domain/filter_helpers.dart';
 import '../services/provider_model_fetch_service.dart';
+import '../services/release_info_service.dart';
 import '../state/app_state.dart';
 import 'band_colors.dart';
 import 'theme.dart';
@@ -1037,9 +1041,198 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          _SettingsTile(
+            icon: Icons.system_update,
+            title: l10n.softwareUpdate,
+            subtitle: l10n.softwareUpdateDesc,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SoftwareUpdateScreen(),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+}
+
+class SoftwareUpdateScreen extends ConsumerStatefulWidget {
+  const SoftwareUpdateScreen({super.key});
+
+  @override
+  ConsumerState<SoftwareUpdateScreen> createState() =>
+      _SoftwareUpdateScreenState();
+}
+
+class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
+  PackageInfo? _packageInfo;
+  bool _busy = false;
+  AppRelease? _release;
+  String? _errorKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPackageInfo();
+  }
+
+  Future<void> _loadPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _packageInfo = info);
+    }
+  }
+
+  String get _currentVersion {
+    final info = _packageInfo;
+    if (info == null) {
+      return '-';
+    }
+    return packageVersionWithBuild(info.version, info.buildNumber);
+  }
+
+  Future<void> _checkUpdate() async {
+    setState(() {
+      _busy = true;
+      _release = null;
+      _errorKey = null;
+    });
+    try {
+      final release = await ref
+          .read(releaseInfoServiceProvider)
+          .fetchLatestRelease();
+      if (mounted) {
+        setState(() {
+          _release = release;
+          _busy = false;
+        });
+      }
+    } on ReleaseInfoException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _errorKey = error.reason == ReleaseInfoFailureReason.noRelease
+            ? 'no-release'
+            : 'failed';
+        _busy = false;
+      });
+    }
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(url)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.softwareUpdate)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _versionRow(l10n.currentVersion, _currentVersion),
+          if (_release != null)
+            _versionRow(l10n.latestVersion, _release!.version),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _busy || _packageInfo == null ? null : _checkUpdate,
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(l10n.checkUpdate),
+          ),
+          const SizedBox(height: 24),
+          ..._resultWidgets(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _versionRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(width: 8),
+          Text(value, style: Theme.of(context).textTheme.titleMedium),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _resultWidgets(BuildContext context) {
+    final l10n = context.l10n;
+    if (_busy) {
+      return const [
+        Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          ),
+        ),
+      ];
+    }
+    if (_errorKey != null) {
+      return [
+        Text(
+          _errorKey == 'no-release'
+              ? l10n.noReleaseAvailable
+              : l10n.updateCheckFailed,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(onPressed: _checkUpdate, child: Text(l10n.retry)),
+      ];
+    }
+    final release = _release;
+    if (release == null) {
+      return const [];
+    }
+    final hasUpdate = compareVersions(release.version, _currentVersion) > 0;
+    if (!hasUpdate) {
+      return [
+        Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade600),
+            const SizedBox(width: 8),
+            Expanded(child: Text(l10n.upToDate)),
+          ],
+        ),
+      ];
+    }
+    return [
+      Text(
+        l10n.newVersionAvailable,
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 12),
+      Text(l10n.updateNotes, style: Theme.of(context).textTheme.labelLarge),
+      const SizedBox(height: 6),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: MarkdownBody(
+            data: release.notes.isEmpty ? release.title : release.notes,
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+      FilledButton.icon(
+        onPressed: () => _openUrl(release.htmlUrl),
+        icon: const Icon(Icons.download),
+        label: Text(l10n.goToDownload),
+      ),
+    ];
   }
 }
 
@@ -1254,9 +1447,10 @@ class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
   }
 
   Future<void> _showProviderDialog([ProviderProfile? provider]) async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) => _ProviderFormDialog(provider: provider),
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ProviderFormScreen(provider: provider),
+      ),
     );
     if (saved == true) {
       ref.invalidate(providerProfilesProvider);
@@ -1270,17 +1464,16 @@ class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
   }
 }
 
-class _ProviderFormDialog extends ConsumerStatefulWidget {
-  const _ProviderFormDialog({this.provider});
+class ProviderFormScreen extends ConsumerStatefulWidget {
+  const ProviderFormScreen({super.key, this.provider});
 
   final ProviderProfile? provider;
 
   @override
-  ConsumerState<_ProviderFormDialog> createState() =>
-      _ProviderFormDialogState();
+  ConsumerState<ProviderFormScreen> createState() => _ProviderFormScreenState();
 }
 
-class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
+class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
   final _nameController = TextEditingController();
   final _baseUrlController = TextEditingController(
     text: 'https://api.openai.com/v1',
@@ -1324,218 +1517,224 @@ class _ProviderFormDialogState extends ConsumerState<_ProviderFormDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final disabled = _busy || _loadingInitial;
-    return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      title: Text(
-        widget.provider == null ? l10n.addProvider : l10n.editProvider,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.provider == null ? l10n.addProvider : l10n.editProvider,
+        ),
       ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_loadingInitial) ...[
-                const LinearProgressIndicator(),
-                const SizedBox(height: 12),
-              ],
-              DropdownButtonFormField<String>(
-                initialValue: _providerType,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: l10n.providerType,
-                  helperText: l10n.providerTypeHint,
-                ),
-                items: [
-                  for (final type in _providerTypes)
-                    DropdownMenuItem(
-                      value: type,
-                      child: Text(type, overflow: TextOverflow.ellipsis),
-                    ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_loadingInitial) ...[
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
                 ],
-                onChanged: disabled
-                    ? null
-                    : (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        setState(() {
-                          _providerType = value;
-                          final defaultBaseUrl = _defaultBaseUrlForType(value);
-                          if (defaultBaseUrl != null) {
-                            _baseUrlController.text = defaultBaseUrl;
+                DropdownButtonFormField<String>(
+                  initialValue: _providerType,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: l10n.providerType,
+                    helperText: l10n.providerTypeHint,
+                  ),
+                  items: [
+                    for (final type in _providerTypes)
+                      DropdownMenuItem(
+                        value: type,
+                        child: Text(type, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: disabled
+                      ? null
+                      : (value) {
+                          if (value == null) {
+                            return;
                           }
-                        });
+                          setState(() {
+                            _providerType = value;
+                            final defaultBaseUrl = _defaultBaseUrlForType(
+                              value,
+                            );
+                            if (defaultBaseUrl != null) {
+                              _baseUrlController.text = defaultBaseUrl;
+                            }
+                          });
+                        },
+                ),
+                if (widget.provider == null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.providerTemplate,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _templateChip('OpenAI', () => applyTemplate('OpenAI')),
+                      _templateChip(
+                        'DeepSeek',
+                        () => applyTemplate('DeepSeek'),
+                      ),
+                      _templateChip('Zhipu', () => applyTemplate('Zhipu')),
+                      _templateChip('Qwen', () => applyTemplate('Qwen')),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _nameController,
+                  enabled: !disabled,
+                  decoration: InputDecoration(
+                    labelText: l10n.displayName,
+                    helperText: l10n.displayNameHint,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _baseUrlController,
+                  enabled: !disabled,
+                  keyboardType: TextInputType.url,
+                  decoration: InputDecoration(
+                    labelText: l10n.baseUrl,
+                    helperText: l10n.baseUrlHint,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _apiKeyController,
+                  enabled: !disabled,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: l10n.apiKey,
+                    helperText: l10n.apiKeyHint,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: disabled ? null : _testConnection,
+                      icon: const Icon(Icons.network_check),
+                      label: Text(l10n.testConnection),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: disabled ? null : _fetchModels,
+                      icon: const Icon(Icons.cloud_download),
+                      label: Text(l10n.fetchModels),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  l10n.savedModels,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                if (_models.isEmpty)
+                  Text(l10n.noModelsSaved)
+                else
+                  for (final model in _models)
+                    _FetchedModelTile(
+                      model: model,
+                      onSelectedChanged: (selected) {
+                        setState(
+                          () => _models = [
+                            for (final item in _models)
+                              item.id == model.id
+                                  ? item.copyWith(selected: selected)
+                                  : item,
+                          ],
+                        );
                       },
-              ),
-              if (widget.provider == null) ...[
+                      onCapabilitiesChanged: (capabilities) {
+                        setState(
+                          () => _models = [
+                            for (final item in _models)
+                              item.id == model.id
+                                  ? item.copyWith(capabilities: capabilities)
+                                  : item,
+                          ],
+                        );
+                      },
+                    ),
+                const Divider(height: 24),
+                Text(
+                  l10n.addModel,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _manualModelController,
+                  enabled: !disabled,
+                  decoration: InputDecoration(
+                    labelText: l10n.modelName,
+                    helperText: l10n.modelNameHint,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  l10n.providerTemplate,
+                  l10n.capabilityHint,
                   style: Theme.of(context).textTheme.labelSmall,
                 ),
                 const SizedBox(height: 6),
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: 8,
                   children: [
-                    _templateChip('OpenAI', () => applyTemplate('OpenAI')),
-                    _templateChip('DeepSeek', () => applyTemplate('DeepSeek')),
-                    _templateChip('Zhipu', () => applyTemplate('Zhipu')),
-                    _templateChip('Qwen', () => applyTemplate('Qwen')),
+                    for (final capability in ModelCapability.values)
+                      FilterChip(
+                        label: Text(_capabilityLabel(context, capability)),
+                        selected: _manualCapabilities.contains(capability),
+                        onSelected: disabled
+                            ? null
+                            : (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    _manualCapabilities.add(capability);
+                                  } else {
+                                    _manualCapabilities.remove(capability);
+                                  }
+                                });
+                              },
+                      ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: disabled ? null : _addManualModel,
+                    icon: const Icon(Icons.add),
+                    label: Text(l10n.addModel),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: disabled ? null : _saveProvider,
+                    icon: _busy
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(l10n.saveProvider),
+                  ),
+                ),
               ],
-              const SizedBox(height: 12),
-              TextField(
-                controller: _nameController,
-                enabled: !disabled,
-                decoration: InputDecoration(
-                  labelText: l10n.displayName,
-                  helperText: l10n.displayNameHint,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _baseUrlController,
-                enabled: !disabled,
-                keyboardType: TextInputType.url,
-                decoration: InputDecoration(
-                  labelText: l10n.baseUrl,
-                  helperText: l10n.baseUrlHint,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _apiKeyController,
-                enabled: !disabled,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: l10n.apiKey,
-                  helperText: l10n.apiKeyHint,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: disabled ? null : _testConnection,
-                    icon: const Icon(Icons.network_check),
-                    label: Text(l10n.testConnection),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: disabled ? null : _fetchModels,
-                    icon: const Icon(Icons.cloud_download),
-                    label: Text(l10n.fetchModels),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                l10n.savedModels,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              if (_models.isEmpty)
-                Text(l10n.noModelsSaved)
-              else
-                for (final model in _models)
-                  _FetchedModelTile(
-                    model: model,
-                    onSelectedChanged: (selected) {
-                      setState(
-                        () => _models = [
-                          for (final item in _models)
-                            item.id == model.id
-                                ? item.copyWith(selected: selected)
-                                : item,
-                        ],
-                      );
-                    },
-                    onCapabilitiesChanged: (capabilities) {
-                      setState(
-                        () => _models = [
-                          for (final item in _models)
-                            item.id == model.id
-                                ? item.copyWith(capabilities: capabilities)
-                                : item,
-                        ],
-                      );
-                    },
-                  ),
-              const Divider(height: 24),
-              Text(
-                l10n.addModel,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _manualModelController,
-                enabled: !disabled,
-                decoration: InputDecoration(
-                  labelText: l10n.modelName,
-                  helperText: l10n.modelNameHint,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                l10n.capabilityHint,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                children: [
-                  for (final capability in ModelCapability.values)
-                    FilterChip(
-                      label: Text(_capabilityLabel(context, capability)),
-                      selected: _manualCapabilities.contains(capability),
-                      onSelected: disabled
-                          ? null
-                          : (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _manualCapabilities.add(capability);
-                                } else {
-                                  _manualCapabilities.remove(capability);
-                                }
-                              });
-                            },
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: disabled ? null : _addManualModel,
-                  icon: const Icon(Icons.add),
-                  label: Text(l10n.addModel),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: disabled ? null : () => Navigator.of(context).pop(false),
-          child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
-        ),
-        FilledButton.icon(
-          onPressed: disabled ? null : _saveProvider,
-          icon: _busy
-              ? const SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.save),
-          label: Text(l10n.saveProvider),
-        ),
-      ],
     );
   }
 

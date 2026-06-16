@@ -197,5 +197,17 @@
   "displayNameHint": "随便起一个你认得出的名字",
   "modelNameHint": "模型 ID,如 gpt-4o-mini / whisper-1",
   "providerTemplate": "一键模板",
-  "capabilityHint": "勾选这个模型能做什么"
+  "capabilityHint": "勾选这个模型能做什么",
+  "softwareUpdate": "软件更新",
+  "softwareUpdateDesc": "检查最新版本与更新说明",
+  "checkUpdate": "检查更新",
+  "currentVersion": "当前版本",
+  "latestVersion": "最新版本",
+  "upToDate": "已是最新版本",
+  "newVersionAvailable": "发现新版本",
+  "updateNotes": "更新说明",
+  "goToDownload": "前往 GitHub 下载",
+  "updateCheckFailed": "检查更新失败",
+  "noReleaseAvailable": "暂无可用的发布版本",
+  "retry": "重试"
 }

@@ -5,6 +5,26 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+fun envValue(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+val releaseSigningEnv = listOf(
+    "QSO_RELEASE_STORE_FILE",
+    "QSO_RELEASE_STORE_PASSWORD",
+    "QSO_RELEASE_KEY_ALIAS",
+    "QSO_RELEASE_KEY_PASSWORD",
+)
+val isReleaseTask = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = true)
+}
+val hasReleaseSigning = releaseSigningEnv.all { envValue(it) != null }
+
+if (isReleaseTask && !hasReleaseSigning) {
+    throw org.gradle.api.GradleException(
+        "Release signing requires QSO_RELEASE_STORE_FILE, QSO_RELEASE_STORE_PASSWORD, " +
+            "QSO_RELEASE_KEY_ALIAS, and QSO_RELEASE_KEY_PASSWORD."
+    )
+}
+
 android {
     namespace = "com.example.qso_scribe_app"
     compileSdk = flutter.compileSdkVersion
@@ -29,10 +49,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(envValue("QSO_RELEASE_STORE_FILE")!!)
+                storePassword = envValue("QSO_RELEASE_STORE_PASSWORD")
+                keyAlias = envValue("QSO_RELEASE_KEY_ALIAS")
+                keyPassword = envValue("QSO_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }

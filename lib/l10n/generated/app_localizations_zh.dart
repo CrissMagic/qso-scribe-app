@@ -605,4 +605,40 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get capabilityHint => '勾选这个模型能做什么';
+
+  @override
+  String get softwareUpdate => '软件更新';
+
+  @override
+  String get softwareUpdateDesc => '检查最新版本与更新说明';
+
+  @override
+  String get checkUpdate => '检查更新';
+
+  @override
+  String get currentVersion => '当前版本';
+
+  @override
+  String get latestVersion => '最新版本';
+
+  @override
+  String get upToDate => '已是最新版本';
+
+  @override
+  String get newVersionAvailable => '发现新版本';
+
+  @override
+  String get updateNotes => '更新说明';
+
+  @override
+  String get goToDownload => '前往 GitHub 下载';
+
+  @override
+  String get updateCheckFailed => '检查更新失败';
+
+  @override
+  String get noReleaseAvailable => '暂无可用的发布版本';
+
+  @override
+  String get retry => '重试';
 }

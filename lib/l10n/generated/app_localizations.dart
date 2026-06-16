@@ -1285,6 +1285,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pick what this model can do'**
   String get capabilityHint;
+
+  /// No description provided for @softwareUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Software update'**
+  String get softwareUpdate;
+
+  /// No description provided for @softwareUpdateDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the latest version and release notes'**
+  String get softwareUpdateDesc;
+
+  /// No description provided for @checkUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates'**
+  String get checkUpdate;
+
+  /// No description provided for @currentVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Current version'**
+  String get currentVersion;
+
+  /// No description provided for @latestVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Latest version'**
+  String get latestVersion;
+
+  /// No description provided for @upToDate.
+  ///
+  /// In en, this message translates to:
+  /// **'You are on the latest version'**
+  String get upToDate;
+
+  /// No description provided for @newVersionAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'A new version is available'**
+  String get newVersionAvailable;
+
+  /// No description provided for @updateNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Release notes'**
+  String get updateNotes;
+
+  /// No description provided for @goToDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Download on GitHub'**
+  String get goToDownload;
+
+  /// No description provided for @updateCheckFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Update check failed'**
+  String get updateCheckFailed;
+
+  /// No description provided for @noReleaseAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No release is available yet'**
+  String get noReleaseAvailable;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
 }
 
 class _AppLocalizationsDelegate

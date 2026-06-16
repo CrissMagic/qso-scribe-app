@@ -197,5 +197,17 @@
   "displayNameHint": "Any label you recognize, e.g. My OpenAI",
   "modelNameHint": "Model ID, e.g. gpt-4o-mini / whisper-1",
   "providerTemplate": "Quick template",
-  "capabilityHint": "Pick what this model can do"
+  "capabilityHint": "Pick what this model can do",
+  "softwareUpdate": "Software update",
+  "softwareUpdateDesc": "Check the latest version and release notes",
+  "checkUpdate": "Check for updates",
+  "currentVersion": "Current version",
+  "latestVersion": "Latest version",
+  "upToDate": "You are on the latest version",
+  "newVersionAvailable": "A new version is available",
+  "updateNotes": "Release notes",
+  "goToDownload": "Download on GitHub",
+  "updateCheckFailed": "Update check failed",
+  "noReleaseAvailable": "No release is available yet",
+  "retry": "Retry"
 }

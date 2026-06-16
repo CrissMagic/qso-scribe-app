@@ -20,6 +20,7 @@ import '../services/local_audio_playback_service.dart';
 import '../services/provider_model_fetch_service.dart';
 import '../services/qso_processing_service.dart';
 import '../services/record_audio_capture_service.dart';
+import '../services/release_info_service.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
 
@@ -58,6 +59,12 @@ final exportServiceProvider = Provider<ExportService>(
 final providerModelFetchServiceProvider = Provider<ProviderModelFetchService>(
   (ref) => ProviderModelFetchService(),
 );
+
+final releaseInfoServiceProvider = Provider<ReleaseInfoService>((ref) {
+  final service = ReleaseInfoService();
+  ref.onDispose(service.close);
+  return service;
+});
 
 final exportHistoryProvider = FutureProvider<List<ExportHistoryEntry>>(
   (ref) => ref.watch(exportHistoryRepositoryProvider).listExports(),
