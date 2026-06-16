@@ -27,7 +27,15 @@ void main() {
           "tag_name": "v1.2.3+4",
           "name": " Version 1.2.3 ",
           "body": " Fixes and improvements ",
-          "html_url": " https://github.com/CrissMagic/qso-scribe-app/releases/tag/v1.2.3+4 "
+          "html_url": " https://github.com/CrissMagic/qso-scribe-app/releases/tag/v1.2.3+4 ",
+          "assets": [
+            {
+              "name": "qso-scribe-app-1.2.3-build4-android.apk",
+              "browser_download_url": " https://github.com/CrissMagic/qso-scribe-app/releases/download/v1.2.3+4/qso-scribe-app-1.2.3-build4-android.apk ",
+              "size": 123456,
+              "digest": "sha256:6089703cbca6db28f9c446d5689aa05655880d0cd8b0a7d8f2c1536921a3cf02"
+            }
+          ]
         }
         ''', 200),
     );
@@ -40,6 +48,16 @@ void main() {
     expect(
       release.htmlUrl,
       'https://github.com/CrissMagic/qso-scribe-app/releases/tag/v1.2.3+4',
+    );
+    expect(release.apkAsset.name, 'qso-scribe-app-1.2.3-build4-android.apk');
+    expect(
+      release.apkAsset.downloadUrl,
+      'https://github.com/CrissMagic/qso-scribe-app/releases/download/v1.2.3+4/qso-scribe-app-1.2.3-build4-android.apk',
+    );
+    expect(release.apkAsset.size, 123456);
+    expect(
+      release.apkAsset.sha256Digest,
+      '6089703cbca6db28f9c446d5689aa05655880d0cd8b0a7d8f2c1536921a3cf02',
     );
   });
 
@@ -129,6 +147,63 @@ void main() {
   test('fetchLatestRelease rejects missing required release fields', () {
     final service = serviceWithResponse(
       http.Response('{"tag_name":"v1.2.3+4"}', 200),
+    );
+
+    expect(
+      service.fetchLatestRelease,
+      throwsA(
+        isA<ReleaseInfoException>().having(
+          (error) => error.reason,
+          'reason',
+          ReleaseInfoFailureReason.badResponse,
+        ),
+      ),
+    );
+  });
+
+  test('fetchLatestRelease rejects releases without an APK asset', () {
+    final service = serviceWithResponse(
+      http.Response('''
+        {
+          "tag_name": "v1.2.3+4",
+          "html_url": "https://github.com/example/release",
+          "assets": [
+            {
+              "name": "notes.txt",
+              "browser_download_url": "https://github.com/example/notes.txt"
+            }
+          ]
+        }
+        ''', 200),
+    );
+
+    expect(
+      service.fetchLatestRelease,
+      throwsA(
+        isA<ReleaseInfoException>().having(
+          (error) => error.reason,
+          'reason',
+          ReleaseInfoFailureReason.badResponse,
+        ),
+      ),
+    );
+  });
+
+  test('fetchLatestRelease rejects malformed asset digest', () {
+    final service = serviceWithResponse(
+      http.Response('''
+        {
+          "tag_name": "v1.2.3+4",
+          "html_url": "https://github.com/example/release",
+          "assets": [
+            {
+              "name": "qso-scribe-app-1.2.3-build4-android.apk",
+              "browser_download_url": "https://github.com/example/qso-scribe-app-1.2.3-build4-android.apk",
+              "digest": "sha256:not-a-digest"
+            }
+          ]
+        }
+        ''', 200),
     );
 
     expect(

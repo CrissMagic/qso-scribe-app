@@ -452,6 +452,7 @@ FROM import_jobs_v1
       'transcriptionMode': 'streaming',
       'failureHandling': 'alert',
       'audioRetentionPolicy': 'keep',
+      'checkUpdatesOnStartup': 'true',
       'setupCompleted': 'false',
     };
 

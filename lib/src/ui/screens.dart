@@ -136,15 +136,70 @@ class FirstRunSetupScreen extends ConsumerWidget {
   }
 }
 
-class MainShell extends StatefulWidget {
+class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  ConsumerState<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
+  bool _startupUpdateCheckStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkUpdateOnStartup());
+    });
+  }
+
+  Future<void> _checkUpdateOnStartup() async {
+    if (_startupUpdateCheckStarted || !mounted) {
+      return;
+    }
+    _startupUpdateCheckStarted = true;
+    try {
+      final settings = await ref.read(appSettingsProvider.future);
+      if (!settings.checkUpdatesOnStartup || !mounted) {
+        return;
+      }
+
+      final info = await PackageInfo.fromPlatform();
+      final currentVersion = packageVersionWithBuild(
+        info.version,
+        info.buildNumber,
+      );
+      final updateState = await ref
+          .read(appUpdateProvider.notifier)
+          .checkForUpdate(currentVersion: currentVersion, silent: true);
+      if (!mounted ||
+          updateState.status != AppUpdateStatus.updateAvailable ||
+          updateState.release == null) {
+        return;
+      }
+
+      final l10n = context.l10n;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.newVersionAvailable),
+          action: SnackBarAction(
+            label: l10n.viewUpdate,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SoftwareUpdateScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (_) {
+      return;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -904,6 +959,7 @@ class SettingsScreen extends ConsumerWidget {
     final transcriptionMode = ref.watch(transcriptionModeProvider);
     final failureHandling = ref.watch(failureHandlingProvider);
     final audioRetention = ref.watch(audioRetentionPolicyProvider);
+    final checkUpdatesOnStartup = ref.watch(checkUpdatesOnStartupProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
@@ -1041,6 +1097,22 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
+          _CardSection(
+            title: l10n.updatePreferences,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.update),
+                title: Text(l10n.checkUpdatesOnStartup),
+                subtitle: Text(l10n.checkUpdatesOnStartupDesc),
+                value: checkUpdatesOnStartup,
+                onChanged: (value) => ref
+                    .read(appSettingsProvider.notifier)
+                    .setCheckUpdatesOnStartup(value),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
           _SettingsTile(
             icon: Icons.system_update,
             title: l10n.softwareUpdate,
@@ -1067,9 +1139,6 @@ class SoftwareUpdateScreen extends ConsumerStatefulWidget {
 
 class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
   PackageInfo? _packageInfo;
-  bool _busy = false;
-  AppRelease? _release;
-  String? _errorKey;
 
   @override
   void initState() {
@@ -1093,32 +1162,17 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
   }
 
   Future<void> _checkUpdate() async {
-    setState(() {
-      _busy = true;
-      _release = null;
-      _errorKey = null;
-    });
-    try {
-      final release = await ref
-          .read(releaseInfoServiceProvider)
-          .fetchLatestRelease();
-      if (mounted) {
-        setState(() {
-          _release = release;
-          _busy = false;
-        });
-      }
-    } on ReleaseInfoException catch (error) {
+    var info = _packageInfo;
+    if (info == null) {
+      info = await PackageInfo.fromPlatform();
       if (!mounted) {
         return;
       }
-      setState(() {
-        _errorKey = error.reason == ReleaseInfoFailureReason.noRelease
-            ? 'no-release'
-            : 'failed';
-        _busy = false;
-      });
+      setState(() => _packageInfo = info);
     }
+    await ref
+        .read(appUpdateProvider.notifier)
+        .checkForUpdate(currentVersion: _currentVersion);
   }
 
   Future<void> _openUrl(String url) async {
@@ -1132,18 +1186,21 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final updateState = ref.watch(appUpdateProvider);
+    final release = updateState.release;
     return Scaffold(
       appBar: AppBar(title: Text(l10n.softwareUpdate)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _versionRow(l10n.currentVersion, _currentVersion),
-          if (_release != null)
-            _versionRow(l10n.latestVersion, _release!.version),
+          if (release != null) _versionRow(l10n.latestVersion, release.version),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: _busy || _packageInfo == null ? null : _checkUpdate,
-            icon: _busy
+            onPressed: updateState.isBusy || _packageInfo == null
+                ? null
+                : _checkUpdate,
+            icon: updateState.status == AppUpdateStatus.checking
                 ? const SizedBox.square(
                     dimension: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
@@ -1152,7 +1209,7 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
             label: Text(l10n.checkUpdate),
           ),
           const SizedBox(height: 24),
-          ..._resultWidgets(context),
+          ..._resultWidgets(context, updateState),
         ],
       ),
     );
@@ -1165,15 +1222,24 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         children: [
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(width: 8),
-          Text(value, style: Theme.of(context).textTheme.titleMedium),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.titleMedium,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  List<Widget> _resultWidgets(BuildContext context) {
+  List<Widget> _resultWidgets(
+    BuildContext context,
+    AppUpdateState updateState,
+  ) {
     final l10n = context.l10n;
-    if (_busy) {
+    if (updateState.status == AppUpdateStatus.checking) {
       return const [
         Center(
           child: Padding(
@@ -1183,19 +1249,27 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         ),
       ];
     }
-    if (_errorKey != null) {
+    if (updateState.status == AppUpdateStatus.noRelease) {
       return [
-        Text(
-          _errorKey == 'no-release'
-              ? l10n.noReleaseAvailable
-              : l10n.updateCheckFailed,
-        ),
+        Text(l10n.noReleaseAvailable),
         const SizedBox(height: 12),
         OutlinedButton(onPressed: _checkUpdate, child: Text(l10n.retry)),
       ];
     }
-    final release = _release;
+
+    final release = updateState.release;
     if (release == null) {
+      if (updateState.status == AppUpdateStatus.failed) {
+        return [
+          _UpdateStatusRow(
+            icon: Icons.error_outline,
+            text: _updateErrorLabel(context, updateState.errorCode),
+            isError: true,
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: _checkUpdate, child: Text(l10n.retry)),
+        ];
+      }
       return const [];
     }
     final hasUpdate = compareVersions(release.version, _currentVersion) > 0;
@@ -1210,7 +1284,16 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         ),
       ];
     }
-    return [
+
+    final widgets = <Widget>[
+      if (updateState.status == AppUpdateStatus.failed) ...[
+        _UpdateStatusRow(
+          icon: Icons.error_outline,
+          text: _updateErrorLabel(context, updateState.errorCode),
+          isError: true,
+        ),
+        const SizedBox(height: 12),
+      ],
       Text(
         l10n.newVersionAvailable,
         style: Theme.of(context).textTheme.titleMedium,
@@ -1227,12 +1310,156 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         ),
       ),
       const SizedBox(height: 16),
-      FilledButton.icon(
+    ];
+    widgets.addAll(_downloadWidgets(context, release, updateState));
+    return widgets;
+  }
+
+  List<Widget> _downloadWidgets(
+    BuildContext context,
+    AppRelease release,
+    AppUpdateState updateState,
+  ) {
+    final l10n = context.l10n;
+    final downloading = updateState.status == AppUpdateStatus.downloading;
+    final downloaded =
+        updateState.localApkPath != null &&
+        updateState.status != AppUpdateStatus.downloading &&
+        updateState.status != AppUpdateStatus.installing;
+
+    return [
+      _CardSection(
+        title: l10n.updatePackage,
+        children: [
+          _versionRow(l10n.updateAsset, release.apkAsset.name),
+          if (release.apkAsset.size != null)
+            _versionRow(l10n.updateSize, _formatBytes(release.apkAsset.size!)),
+          if (release.apkAsset.sha256Digest != null)
+            _versionRow(
+              l10n.updateDigest,
+              release.apkAsset.sha256Digest!.substring(0, 12),
+            ),
+          if (downloading) ...[
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: updateState.progress),
+            const SizedBox(height: 8),
+            Text(
+              '${l10n.downloadProgress}: '
+              '${_formatBytes(updateState.receivedBytes)} / '
+              '${updateState.totalBytes == null ? '-' : _formatBytes(updateState.totalBytes!)}',
+            ),
+            const SizedBox(height: 8),
+            _UpdateStatusRow(
+              icon: Icons.downloading,
+              text: updateState.openInstallerWhenDone
+                  ? l10n.downloadThenOpenInstaller
+                  : l10n.backgroundDownloading,
+            ),
+          ],
+          if (downloaded) ...[
+            const SizedBox(height: 12),
+            _UpdateStatusRow(
+              icon: Icons.check_circle_outline,
+              text: l10n.updateDownloaded,
+            ),
+          ],
+        ],
+      ),
+      const SizedBox(height: 12),
+      if (!downloading && !downloaded) ...[
+        FilledButton.icon(
+          onPressed: () => unawaited(
+            ref
+                .read(appUpdateProvider.notifier)
+                .downloadLatest(openInstallerWhenDone: true),
+          ),
+          icon: const Icon(Icons.system_update_alt),
+          label: Text(l10n.downloadAndOpenInstaller),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => unawaited(
+            ref
+                .read(appUpdateProvider.notifier)
+                .downloadLatest(openInstallerWhenDone: false),
+          ),
+          icon: const Icon(Icons.download_for_offline_outlined),
+          label: Text(l10n.backgroundDownload),
+        ),
+      ],
+      if (downloaded)
+        FilledButton.icon(
+          onPressed: () =>
+              unawaited(ref.read(appUpdateProvider.notifier).openInstaller()),
+          icon: const Icon(Icons.install_mobile),
+          label: Text(l10n.openInstaller),
+        ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
         onPressed: () => _openUrl(release.htmlUrl),
-        icon: const Icon(Icons.download),
+        icon: const Icon(Icons.open_in_new),
         label: Text(l10n.goToDownload),
       ),
     ];
+  }
+
+  String _updateErrorLabel(BuildContext context, String? code) {
+    final l10n = context.l10n;
+    return switch (code) {
+      'noRelease' => l10n.noReleaseAvailable,
+      'httpError' => l10n.updateCheckFailed,
+      'networkError' => l10n.updateNetworkFailed,
+      'timeout' => l10n.updateTimeout,
+      'badResponse' => l10n.updateBadResponse,
+      'fileSystemError' => l10n.updateFileSystemFailed,
+      'checksumMismatch' => l10n.updateChecksumMismatch,
+      'installPermissionRequired' => l10n.installPermissionRequired,
+      'installerUnavailable' => l10n.installerUnavailable,
+      'invalidApkPath' => l10n.invalidApkPath,
+      'release_missing' => l10n.updateCheckFailed,
+      _ => l10n.updateCheckFailed,
+    };
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) {
+      return '$bytes B';
+    }
+    final kb = bytes / 1024;
+    if (kb < 1024) {
+      return '${kb.toStringAsFixed(1)} KB';
+    }
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(1)} MB';
+  }
+}
+
+class _UpdateStatusRow extends StatelessWidget {
+  const _UpdateStatusRow({
+    required this.icon,
+    required this.text,
+    this.isError = false,
+  });
+
+  final IconData icon;
+  final String text;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, color: isError ? colorScheme.error : null),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: isError ? TextStyle(color: colorScheme.error) : null,
+          ),
+        ),
+      ],
+    );
   }
 }
 

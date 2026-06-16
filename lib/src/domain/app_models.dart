@@ -274,30 +274,36 @@ class AppSettings {
     required this.transcriptionMode,
     required this.failureHandling,
     required this.audioRetentionPolicy,
+    required this.checkUpdatesOnStartup,
   });
 
   const AppSettings.defaults()
     : localeMode = AppLocaleMode.system,
       transcriptionMode = TranscriptionMode.streaming,
       failureHandling = FailureHandling.alert,
-      audioRetentionPolicy = AudioRetentionPolicy.keep;
+      audioRetentionPolicy = AudioRetentionPolicy.keep,
+      checkUpdatesOnStartup = true;
 
   final AppLocaleMode localeMode;
   final TranscriptionMode transcriptionMode;
   final FailureHandling failureHandling;
   final AudioRetentionPolicy audioRetentionPolicy;
+  final bool checkUpdatesOnStartup;
 
   AppSettings copyWith({
     AppLocaleMode? localeMode,
     TranscriptionMode? transcriptionMode,
     FailureHandling? failureHandling,
     AudioRetentionPolicy? audioRetentionPolicy,
+    bool? checkUpdatesOnStartup,
   }) {
     return AppSettings(
       localeMode: localeMode ?? this.localeMode,
       transcriptionMode: transcriptionMode ?? this.transcriptionMode,
       failureHandling: failureHandling ?? this.failureHandling,
       audioRetentionPolicy: audioRetentionPolicy ?? this.audioRetentionPolicy,
+      checkUpdatesOnStartup:
+          checkUpdatesOnStartup ?? this.checkUpdatesOnStartup,
     );
   }
 }

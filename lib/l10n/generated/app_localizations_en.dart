@@ -668,4 +668,77 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get retry => 'Retry';
+
+  @override
+  String get updatePreferences => 'Update settings';
+
+  @override
+  String get checkUpdatesOnStartup => 'Check for updates on startup';
+
+  @override
+  String get checkUpdatesOnStartupDesc =>
+      'Check GitHub Releases after entering the main screen';
+
+  @override
+  String get viewUpdate => 'View';
+
+  @override
+  String get updatePackage => 'Package';
+
+  @override
+  String get updateAsset => 'File';
+
+  @override
+  String get updateSize => 'Size';
+
+  @override
+  String get updateDigest => 'SHA-256';
+
+  @override
+  String get downloadProgress => 'Download progress';
+
+  @override
+  String get downloadAndOpenInstaller => 'Download, then open install prompt';
+
+  @override
+  String get backgroundDownload => 'Background download';
+
+  @override
+  String get downloadThenOpenInstaller =>
+      'Install prompt will open after download';
+
+  @override
+  String get backgroundDownloading => 'Downloading in background';
+
+  @override
+  String get updateDownloaded => 'Download complete';
+
+  @override
+  String get openInstaller => 'Open install prompt';
+
+  @override
+  String get updateNetworkFailed => 'Network connection failed';
+
+  @override
+  String get updateTimeout => 'Request timed out';
+
+  @override
+  String get updateBadResponse =>
+      'Release metadata was not in the expected format';
+
+  @override
+  String get updateFileSystemFailed => 'Could not write the package';
+
+  @override
+  String get updateChecksumMismatch => 'Package checksum did not match';
+
+  @override
+  String get installPermissionRequired =>
+      'Allow this app to install unknown apps';
+
+  @override
+  String get installerUnavailable => 'No system installer is available';
+
+  @override
+  String get invalidApkPath => 'Package path is invalid';
 }

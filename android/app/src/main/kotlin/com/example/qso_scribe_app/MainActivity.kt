@@ -1,6 +1,12 @@
 package com.example.qso_scribe_app
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -29,6 +35,15 @@ class MainActivity : FlutterActivity() {
                     stopAudio()
                     result.success(null)
                 }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "qso_scribe/app_update",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "installApk" -> installApk(call.argument<String>("path"), result)
                 else -> result.notImplemented()
             }
         }
@@ -98,6 +113,56 @@ class MainActivity : FlutterActivity() {
             result?.success(null)
         } else {
             result?.error(errorCode, errorMessage, null)
+        }
+    }
+
+    private fun installApk(path: String?, result: MethodChannel.Result) {
+        if (path.isNullOrBlank()) {
+            result.error("invalid_apk_path", "APK path is required", null)
+            return
+        }
+
+        val file = File(path)
+        if (!file.exists()) {
+            result.error("invalid_apk_path", "APK file does not exist", null)
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:$packageName"),
+            )
+            try {
+                startActivity(intent)
+                result.error(
+                    "install_permission_required",
+                    "Install permission is required",
+                    null,
+                )
+            } catch (_: ActivityNotFoundException) {
+                result.error("installer_unavailable", "Install settings unavailable", null)
+            }
+            return
+        }
+
+        val apkUri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+            result.success(null)
+        } catch (_: ActivityNotFoundException) {
+            result.error("installer_unavailable", "No installer is available", null)
         }
     }
 }

@@ -1357,6 +1357,144 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Retry'**
   String get retry;
+
+  /// No description provided for @updatePreferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Update settings'**
+  String get updatePreferences;
+
+  /// No description provided for @checkUpdatesOnStartup.
+  ///
+  /// In en, this message translates to:
+  /// **'Check for updates on startup'**
+  String get checkUpdatesOnStartup;
+
+  /// No description provided for @checkUpdatesOnStartupDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Check GitHub Releases after entering the main screen'**
+  String get checkUpdatesOnStartupDesc;
+
+  /// No description provided for @viewUpdate.
+  ///
+  /// In en, this message translates to:
+  /// **'View'**
+  String get viewUpdate;
+
+  /// No description provided for @updatePackage.
+  ///
+  /// In en, this message translates to:
+  /// **'Package'**
+  String get updatePackage;
+
+  /// No description provided for @updateAsset.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get updateAsset;
+
+  /// No description provided for @updateSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Size'**
+  String get updateSize;
+
+  /// No description provided for @updateDigest.
+  ///
+  /// In en, this message translates to:
+  /// **'SHA-256'**
+  String get updateDigest;
+
+  /// No description provided for @downloadProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Download progress'**
+  String get downloadProgress;
+
+  /// No description provided for @downloadAndOpenInstaller.
+  ///
+  /// In en, this message translates to:
+  /// **'Download, then open install prompt'**
+  String get downloadAndOpenInstaller;
+
+  /// No description provided for @backgroundDownload.
+  ///
+  /// In en, this message translates to:
+  /// **'Background download'**
+  String get backgroundDownload;
+
+  /// No description provided for @downloadThenOpenInstaller.
+  ///
+  /// In en, this message translates to:
+  /// **'Install prompt will open after download'**
+  String get downloadThenOpenInstaller;
+
+  /// No description provided for @backgroundDownloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading in background'**
+  String get backgroundDownloading;
+
+  /// No description provided for @updateDownloaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Download complete'**
+  String get updateDownloaded;
+
+  /// No description provided for @openInstaller.
+  ///
+  /// In en, this message translates to:
+  /// **'Open install prompt'**
+  String get openInstaller;
+
+  /// No description provided for @updateNetworkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Network connection failed'**
+  String get updateNetworkFailed;
+
+  /// No description provided for @updateTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Request timed out'**
+  String get updateTimeout;
+
+  /// No description provided for @updateBadResponse.
+  ///
+  /// In en, this message translates to:
+  /// **'Release metadata was not in the expected format'**
+  String get updateBadResponse;
+
+  /// No description provided for @updateFileSystemFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not write the package'**
+  String get updateFileSystemFailed;
+
+  /// No description provided for @updateChecksumMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Package checksum did not match'**
+  String get updateChecksumMismatch;
+
+  /// No description provided for @installPermissionRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow this app to install unknown apps'**
+  String get installPermissionRequired;
+
+  /// No description provided for @installerUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'No system installer is available'**
+  String get installerUnavailable;
+
+  /// No description provided for @invalidApkPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Package path is invalid'**
+  String get invalidApkPath;
 }
 
 class _AppLocalizationsDelegate

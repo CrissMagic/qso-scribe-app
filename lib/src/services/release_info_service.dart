@@ -11,12 +11,28 @@ class AppRelease {
     required this.title,
     required this.notes,
     required this.htmlUrl,
+    required this.apkAsset,
   });
 
   final String version;
   final String title;
   final String notes;
   final String htmlUrl;
+  final AppReleaseAsset apkAsset;
+}
+
+class AppReleaseAsset {
+  const AppReleaseAsset({
+    required this.name,
+    required this.downloadUrl,
+    this.size,
+    this.sha256Digest,
+  });
+
+  final String name;
+  final String downloadUrl;
+  final int? size;
+  final String? sha256Digest;
 }
 
 enum ReleaseInfoFailureReason {
@@ -85,6 +101,7 @@ class ReleaseInfoService {
     final tagName = (payload['tag_name'] as String?)?.trim() ?? '';
     final version = _releaseVersionFromTag(tagName);
     final htmlUrl = (payload['html_url'] as String?)?.trim() ?? '';
+    final apkAsset = _apkAssetFromAssets(payload['assets']);
     if (version.isEmpty || htmlUrl.isEmpty) {
       throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
     }
@@ -93,7 +110,65 @@ class ReleaseInfoService {
       title: (payload['name'] as String?)?.trim() ?? '',
       notes: (payload['body'] as String?)?.trim() ?? '',
       htmlUrl: htmlUrl,
+      apkAsset: apkAsset,
     );
+  }
+
+  AppReleaseAsset _apkAssetFromAssets(Object? value) {
+    if (value is! List) {
+      throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
+    }
+
+    Map<Object?, Object?>? selected;
+    for (final item in value) {
+      if (item is! Map) {
+        continue;
+      }
+      final asset = Map<Object?, Object?>.from(item);
+      final name = (item['name'] as String?)?.trim() ?? '';
+      if (_isPreferredApkAssetName(name)) {
+        selected = asset;
+        break;
+      }
+      if (selected == null && name.toLowerCase().endsWith('.apk')) {
+        selected = asset;
+      }
+    }
+    if (selected == null) {
+      throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
+    }
+
+    final name = (selected['name'] as String?)?.trim() ?? '';
+    final downloadUrl =
+        (selected['browser_download_url'] as String?)?.trim() ?? '';
+    final size = selected['size'];
+    if (name.isEmpty || downloadUrl.isEmpty) {
+      throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
+    }
+    return AppReleaseAsset(
+      name: name,
+      downloadUrl: downloadUrl,
+      size: size is int && size > 0 ? size : null,
+      sha256Digest: _sha256Digest(selected['digest']),
+    );
+  }
+
+  bool _isPreferredApkAssetName(String name) {
+    final lowerName = name.toLowerCase();
+    return lowerName.startsWith('qso-scribe-app-') &&
+        lowerName.endsWith('-android.apk');
+  }
+
+  String? _sha256Digest(Object? value) {
+    final text = (value as String?)?.trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    final match = RegExp(r'^sha256:([a-fA-F0-9]{64})$').firstMatch(text);
+    if (match == null) {
+      throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
+    }
+    return match.group(1)!.toLowerCase();
   }
 
   Map<String, Object?> _decodeJsonObject(String body) {

@@ -18,6 +18,7 @@ class SettingsRepository {
       audioRetentionPolicy: decodeAudioRetentionPolicy(
         values['audioRetentionPolicy'],
       ),
+      checkUpdatesOnStartup: values['checkUpdatesOnStartup'] != 'false',
     );
   }
 
@@ -34,6 +35,7 @@ class SettingsRepository {
       'audioRetentionPolicy': encodeAudioRetentionPolicy(
         settings.audioRetentionPolicy,
       ),
+      'checkUpdatesOnStartup': settings.checkUpdatesOnStartup.toString(),
     });
   }
 

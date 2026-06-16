@@ -39,6 +39,7 @@
 - 按模型能力过滤转录、实时流式和结构化模型。
 - ADIF、CSV、原始转写文本导出。
 - 按状态、日期、波段、模式筛选导出。
+- GitHub Release 更新检查、APK 下载进度和用户确认安装。
 
 ## 技术栈
 
@@ -87,6 +88,26 @@ flutter run
 ```bash
 flutter build apk --debug --target-platform android-arm64
 ```
+
+### 发布 Android Release APK
+
+正式发布通过 GitHub Actions 完成。推送 tag 会触发 `.github/workflows/release.yml`，流水线会运行 `flutter analyze`、`flutter test`，再构建签名 APK 并上传到 GitHub Release。
+
+发布 tag 必须和 `pubspec.yaml` 的 `version` 完全一致，格式为：
+
+```text
+v<major>.<minor>.<patch>+<build-number>
+```
+
+例如 `pubspec.yaml` 中为 `version: 0.1.1+2` 时，应推送 tag：
+
+```bash
+git tag v0.1.1+2
+git push origin main
+git push origin v0.1.1+2
+```
+
+GitHub Release 资产会使用 `qso-scribe-app-<version>-build<build-number>-android.apk` 命名，例如 `qso-scribe-app-0.1.1-build2-android.apk`。应用内更新检查会识别并下载该 APK。
 
 ## 项目结构
 
@@ -152,6 +173,7 @@ Covered or reserved capabilities include:
 - Capability-based filtering for transcription, streaming, and structuring models.
 - ADIF, CSV, and raw transcript export.
 - Export filtering by status, date, band, and mode.
+- GitHub Release update checks, APK download progress, and user-confirmed install prompt.
 
 ## Tech Stack
 
@@ -200,6 +222,26 @@ flutter run
 ```bash
 flutter build apk --debug --target-platform android-arm64
 ```
+
+### Publish Android Release APK
+
+Production releases are built by GitHub Actions. Pushing a tag triggers `.github/workflows/release.yml`; the workflow runs `flutter analyze`, `flutter test`, builds the signed APK, and uploads it to GitHub Releases.
+
+The release tag must exactly match `pubspec.yaml` `version` and use this format:
+
+```text
+v<major>.<minor>.<patch>+<build-number>
+```
+
+For example, when `pubspec.yaml` contains `version: 0.1.1+2`, push:
+
+```bash
+git tag v0.1.1+2
+git push origin main
+git push origin v0.1.1+2
+```
+
+The GitHub Release asset is named `qso-scribe-app-<version>-build<build-number>-android.apk`, for example `qso-scribe-app-0.1.1-build2-android.apk`. The in-app updater detects and downloads that APK.
 
 ## Project Structure
 

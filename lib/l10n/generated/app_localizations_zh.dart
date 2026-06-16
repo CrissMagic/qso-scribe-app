@@ -641,4 +641,73 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get retry => '重试';
+
+  @override
+  String get updatePreferences => '更新设置';
+
+  @override
+  String get checkUpdatesOnStartup => '启动时检查更新';
+
+  @override
+  String get checkUpdatesOnStartupDesc => '进入主界面后自动检查 GitHub Release';
+
+  @override
+  String get viewUpdate => '查看';
+
+  @override
+  String get updatePackage => '安装包';
+
+  @override
+  String get updateAsset => '文件';
+
+  @override
+  String get updateSize => '大小';
+
+  @override
+  String get updateDigest => 'SHA-256';
+
+  @override
+  String get downloadProgress => '下载进度';
+
+  @override
+  String get downloadAndOpenInstaller => '下载后打开安装确认';
+
+  @override
+  String get backgroundDownload => '后台下载';
+
+  @override
+  String get downloadThenOpenInstaller => '下载完成后打开安装确认';
+
+  @override
+  String get backgroundDownloading => '后台下载中';
+
+  @override
+  String get updateDownloaded => '下载完成';
+
+  @override
+  String get openInstaller => '打开安装确认';
+
+  @override
+  String get updateNetworkFailed => '网络连接失败';
+
+  @override
+  String get updateTimeout => '请求超时';
+
+  @override
+  String get updateBadResponse => '发布信息格式不符合预期';
+
+  @override
+  String get updateFileSystemFailed => '写入安装包失败';
+
+  @override
+  String get updateChecksumMismatch => '安装包校验失败';
+
+  @override
+  String get installPermissionRequired => '需要允许本应用安装未知来源应用';
+
+  @override
+  String get installerUnavailable => '系统安装器不可用';
+
+  @override
+  String get invalidApkPath => '安装包路径无效';
 }

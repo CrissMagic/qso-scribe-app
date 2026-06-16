@@ -15,6 +15,7 @@ import '../data/provider_repository.dart';
 import '../data/qso_repository.dart';
 import '../data/settings_repository.dart';
 import '../domain/app_models.dart';
+import '../services/app_update_service.dart';
 import '../services/heuristic_qso_structuring_service.dart';
 import '../services/local_audio_playback_service.dart';
 import '../services/provider_model_fetch_service.dart';
@@ -65,6 +66,238 @@ final releaseInfoServiceProvider = Provider<ReleaseInfoService>((ref) {
   ref.onDispose(service.close);
   return service;
 });
+
+final appUpdateServiceProvider = Provider<AppUpdateService>((ref) {
+  final service = AppUpdateService();
+  ref.onDispose(service.close);
+  return service;
+});
+
+enum AppUpdateStatus {
+  idle,
+  checking,
+  updateAvailable,
+  upToDate,
+  noRelease,
+  downloading,
+  downloaded,
+  installing,
+  failed,
+}
+
+class AppUpdateState {
+  const AppUpdateState({
+    this.status = AppUpdateStatus.idle,
+    this.currentVersion,
+    this.release,
+    this.receivedBytes = 0,
+    this.totalBytes,
+    this.localApkPath,
+    this.errorCode,
+    this.openInstallerWhenDone = false,
+  });
+
+  final AppUpdateStatus status;
+  final String? currentVersion;
+  final AppRelease? release;
+  final int receivedBytes;
+  final int? totalBytes;
+  final String? localApkPath;
+  final String? errorCode;
+  final bool openInstallerWhenDone;
+
+  double? get progress {
+    final total = totalBytes;
+    if (total == null || total <= 0) {
+      return null;
+    }
+    return (receivedBytes / total).clamp(0, 1).toDouble();
+  }
+
+  bool get isBusy =>
+      status == AppUpdateStatus.checking ||
+      status == AppUpdateStatus.downloading ||
+      status == AppUpdateStatus.installing;
+
+  AppUpdateState copyWith({
+    AppUpdateStatus? status,
+    String? currentVersion,
+    AppRelease? release,
+    int? receivedBytes,
+    int? totalBytes,
+    String? localApkPath,
+    String? errorCode,
+    bool? openInstallerWhenDone,
+    bool clearRelease = false,
+    bool clearProgress = false,
+    bool clearLocalApkPath = false,
+    bool clearError = false,
+  }) {
+    return AppUpdateState(
+      status: status ?? this.status,
+      currentVersion: currentVersion ?? this.currentVersion,
+      release: clearRelease ? null : release ?? this.release,
+      receivedBytes: clearProgress ? 0 : receivedBytes ?? this.receivedBytes,
+      totalBytes: clearProgress ? null : totalBytes ?? this.totalBytes,
+      localApkPath: clearLocalApkPath
+          ? null
+          : localApkPath ?? this.localApkPath,
+      errorCode: clearError ? null : errorCode ?? this.errorCode,
+      openInstallerWhenDone:
+          openInstallerWhenDone ?? this.openInstallerWhenDone,
+    );
+  }
+}
+
+class AppUpdateNotifier extends Notifier<AppUpdateState> {
+  Future<void>? _downloadTask;
+
+  @override
+  AppUpdateState build() {
+    return const AppUpdateState();
+  }
+
+  Future<AppUpdateState> checkForUpdate({
+    required String currentVersion,
+    bool silent = false,
+  }) async {
+    if (state.status == AppUpdateStatus.checking) {
+      return state;
+    }
+
+    state = state.copyWith(
+      status: AppUpdateStatus.checking,
+      currentVersion: currentVersion,
+      clearError: true,
+      clearLocalApkPath: true,
+      clearProgress: true,
+    );
+
+    try {
+      final release = await ref
+          .read(releaseInfoServiceProvider)
+          .fetchLatestRelease();
+      final hasUpdate = compareVersions(release.version, currentVersion) > 0;
+      state = AppUpdateState(
+        status: hasUpdate
+            ? AppUpdateStatus.updateAvailable
+            : AppUpdateStatus.upToDate,
+        currentVersion: currentVersion,
+        release: release,
+      );
+    } on ReleaseInfoException catch (error) {
+      if (silent) {
+        state = AppUpdateState(currentVersion: currentVersion);
+      } else {
+        state = AppUpdateState(
+          status: error.reason == ReleaseInfoFailureReason.noRelease
+              ? AppUpdateStatus.noRelease
+              : AppUpdateStatus.failed,
+          currentVersion: currentVersion,
+          errorCode: error.reason.name,
+        );
+      }
+    }
+    return state;
+  }
+
+  Future<void> downloadLatest({required bool openInstallerWhenDone}) {
+    final currentTask = _downloadTask;
+    if (currentTask != null) {
+      return currentTask;
+    }
+
+    final release = state.release;
+    if (release == null) {
+      state = state.copyWith(
+        status: AppUpdateStatus.failed,
+        errorCode: 'release_missing',
+      );
+      return Future<void>.value();
+    }
+
+    final task = _download(
+      release,
+      openInstallerWhenDone: openInstallerWhenDone,
+    );
+    _downloadTask = task;
+    return task.whenComplete(() => _downloadTask = null);
+  }
+
+  Future<void> openInstaller() async {
+    final apkPath = state.localApkPath;
+    if (apkPath == null || apkPath.trim().isEmpty) {
+      state = state.copyWith(
+        status: AppUpdateStatus.failed,
+        errorCode: 'invalid_apk_path',
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      status: AppUpdateStatus.installing,
+      clearError: true,
+    );
+    try {
+      await ref.read(appUpdateServiceProvider).openInstaller(apkPath);
+      state = state.copyWith(
+        status: AppUpdateStatus.downloaded,
+        clearError: true,
+      );
+    } on AppUpdateException catch (error) {
+      state = state.copyWith(
+        status: AppUpdateStatus.failed,
+        errorCode: error.reason.name,
+      );
+    }
+  }
+
+  Future<void> _download(
+    AppRelease release, {
+    required bool openInstallerWhenDone,
+  }) async {
+    state = AppUpdateState(
+      status: AppUpdateStatus.downloading,
+      currentVersion: state.currentVersion,
+      release: release,
+      totalBytes: release.apkAsset.size,
+      openInstallerWhenDone: openInstallerWhenDone,
+    );
+
+    try {
+      final path = await ref
+          .read(appUpdateServiceProvider)
+          .downloadApk(
+            release,
+            onProgress: (receivedBytes, totalBytes) {
+              state = state.copyWith(
+                status: AppUpdateStatus.downloading,
+                receivedBytes: receivedBytes,
+                totalBytes: totalBytes ?? release.apkAsset.size,
+                clearError: true,
+              );
+            },
+          );
+      state = state.copyWith(
+        status: AppUpdateStatus.downloaded,
+        localApkPath: path,
+        clearError: true,
+      );
+      if (openInstallerWhenDone) {
+        await openInstaller();
+      }
+    } on AppUpdateException catch (error) {
+      state = state.copyWith(
+        status: AppUpdateStatus.failed,
+        errorCode: error.reason.name,
+      );
+    }
+  }
+}
+
+final appUpdateProvider = NotifierProvider<AppUpdateNotifier, AppUpdateState>(
+  AppUpdateNotifier.new,
+);
 
 final exportHistoryProvider = FutureProvider<List<ExportHistoryEntry>>(
   (ref) => ref.watch(exportHistoryRepositoryProvider).listExports(),
@@ -141,6 +374,11 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
     final current = await future;
     await updateSettings(current.copyWith(audioRetentionPolicy: value));
   }
+
+  Future<void> setCheckUpdatesOnStartup(bool value) async {
+    final current = await future;
+    await updateSettings(current.copyWith(checkUpdatesOnStartup: value));
+  }
 }
 
 final appSettingsProvider =
@@ -181,6 +419,15 @@ final audioRetentionPolicyProvider = Provider<AudioRetentionPolicy>(
       .maybeWhen(
         data: (settings) => settings.audioRetentionPolicy,
         orElse: () => AudioRetentionPolicy.keep,
+      ),
+);
+
+final checkUpdatesOnStartupProvider = Provider<bool>(
+  (ref) => ref
+      .watch(appSettingsProvider)
+      .maybeWhen(
+        data: (settings) => settings.checkUpdatesOnStartup,
+        orElse: () => true,
       ),
 );
 
