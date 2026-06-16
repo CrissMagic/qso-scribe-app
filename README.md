@@ -99,15 +99,15 @@ flutter build apk --debug --target-platform android-arm64
 v<major>.<minor>.<patch>+<build-number>
 ```
 
-例如 `pubspec.yaml` 中为 `version: 0.1.1+2` 时，应推送 tag：
+例如 `pubspec.yaml` 中为 `version: 0.1.2+3` 时，应推送 tag：
 
 ```bash
-git tag v0.1.1+2
+git tag v0.1.2+3
 git push origin main
-git push origin v0.1.1+2
+git push origin v0.1.2+3
 ```
 
-GitHub Release 资产会使用 `qso-scribe-app-<version>-build<build-number>-android.apk` 命名，例如 `qso-scribe-app-0.1.1-build2-android.apk`。应用内更新检查会识别并下载该 APK。
+GitHub Release 资产会使用 `qso-scribe-app-<version>-build<build-number>-android.apk` 命名，例如 `qso-scribe-app-0.1.2-build3-android.apk`。应用内更新检查会识别并下载该 APK。
 
 ## 项目结构
 
@@ -233,15 +233,15 @@ The release tag must exactly match `pubspec.yaml` `version` and use this format:
 v<major>.<minor>.<patch>+<build-number>
 ```
 
-For example, when `pubspec.yaml` contains `version: 0.1.1+2`, push:
+For example, when `pubspec.yaml` contains `version: 0.1.2+3`, push:
 
 ```bash
-git tag v0.1.1+2
+git tag v0.1.2+3
 git push origin main
-git push origin v0.1.1+2
+git push origin v0.1.2+3
 ```
 
-The GitHub Release asset is named `qso-scribe-app-<version>-build<build-number>-android.apk`, for example `qso-scribe-app-0.1.1-build2-android.apk`. The in-app updater detects and downloads that APK.
+The GitHub Release asset is named `qso-scribe-app-<version>-build<build-number>-android.apk`, for example `qso-scribe-app-0.1.2-build3-android.apk`. The in-app updater detects and downloads that APK.
 
 ## Project Structure
 

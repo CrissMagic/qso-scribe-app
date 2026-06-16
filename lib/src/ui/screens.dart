@@ -91,11 +91,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.radio,
-                    size: 64,
-                    color: osc.phosphor,
-                  ),
+                  Icon(Icons.radio, size: 64, color: osc.phosphor),
                   const SizedBox(height: 24),
                   Text(
                     l10n.welcomeTitle,
@@ -105,9 +101,9 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                   if (callsign.isNotEmpty)
                     Text(
                       l10n.welcomeCallsign(callsign),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: osc.phosphor,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleLarge?.copyWith(color: osc.phosphor),
                     ),
                   const SizedBox(height: 8),
                   Text(l10n.welcomeSubtitle),
@@ -474,10 +470,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
         controller: _tabController,
         children: [
           // 后置转写
-          _AfterQsoTab(
-            session: session,
-            capture: capture,
-          ),
+          _AfterQsoTab(session: session, capture: capture),
           // 实时转写
           _StreamingTab(
             session: session,
@@ -491,10 +484,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
 }
 
 class _AfterQsoTab extends ConsumerWidget {
-  const _AfterQsoTab({
-    required this.session,
-    required this.capture,
-  });
+  const _AfterQsoTab({required this.session, required this.capture});
 
   final RecordingSessionState session;
   final QsoCaptureState capture;
@@ -652,7 +642,9 @@ class _StreamingTab extends ConsumerWidget {
             session: session,
             mode: TranscriptionMode.streaming,
             onStopped: (audioPath) async {
-              await ref.read(qsoCaptureProvider.notifier).stopQsoStreaming(
+              await ref
+                  .read(qsoCaptureProvider.notifier)
+                  .stopQsoStreaming(
                     audioPath: audioPath,
                     startedAt: session.startedAt,
                   );
@@ -765,18 +757,14 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
           IconButton(
             tooltip: l10n.import,
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ImportScreen(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const ImportScreen()),
             ),
             icon: const Icon(Icons.file_download),
           ),
           IconButton(
             tooltip: l10n.export,
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ExportScreen(),
-              ),
+              MaterialPageRoute<void>(builder: (_) => const ExportScreen()),
             ),
             icon: const Icon(Icons.file_upload),
           ),
@@ -793,10 +781,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             if (tb == null) return -1;
             return _dateDesc ? tb.compareTo(ta) : ta.compareTo(tb);
           });
-          final displayCount =
-              (filteredLogs.length < _pageSize)
-                  ? filteredLogs.length
-                  : _pageSize;
+          final displayCount = (filteredLogs.length < _pageSize)
+              ? filteredLogs.length
+              : _pageSize;
           final hasMore = filteredLogs.length > _pageSize;
           return RefreshIndicator(
             onRefresh: () async {
@@ -831,8 +818,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                         Row(
                           children: [
                             ActionChip(
-                              avatar:
-                                  const Icon(Icons.filter_list, size: 18),
+                              avatar: const Icon(Icons.filter_list, size: 18),
                               label: Text(_dimensionLabel(context)),
                               onPressed: _cycleDimension,
                             ),
@@ -882,8 +868,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     sliver: SliverList.separated(
                       itemCount: displayCount + (hasMore ? 1 : 0),
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 8),
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         if (index >= filteredLogs.length) {
                           return Center(
@@ -900,9 +885,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                       },
                     ),
                   ),
-                const SliverPadding(
-                  padding: EdgeInsets.only(bottom: 16),
-                ),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
               ],
             ),
           );
@@ -954,12 +937,13 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             }),
         ];
       case _FilterDimension.band:
-        final bands = allLogs
-            .map((l) => l.band.value.trim())
-            .where((b) => b.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
+        final bands =
+            allLogs
+                .map((l) => l.band.value.trim())
+                .where((b) => b.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
         return [
           _optionChip(context, l10n.all, _band == null, () {
             setState(() => _band = null);
@@ -970,12 +954,13 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             }),
         ];
       case _FilterDimension.mode:
-        final modes = allLogs
-            .map((l) => l.mode.value.trim())
-            .where((m) => m.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
+        final modes =
+            allLogs
+                .map((l) => l.mode.value.trim())
+                .where((m) => m.isNotEmpty)
+                .toSet()
+                .toList()
+              ..sort();
         return [
           _optionChip(context, l10n.all, _mode == null, () {
             setState(() => _mode = null);
@@ -1024,10 +1009,24 @@ class ImportScreen extends ConsumerWidget {
             onTap: () async {
               final result = await FilePicker.platform.pickFiles(
                 type: FileType.custom,
-                allowedExtensions: ['wav', 'm4a', 'mp3', 'pcm', 'flac', 'ogg', 'opus', 'aac', 'amr', 'webm'],
+                allowedExtensions: [
+                  'wav',
+                  'm4a',
+                  'mp3',
+                  'pcm',
+                  'flac',
+                  'ogg',
+                  'opus',
+                  'aac',
+                  'amr',
+                  'webm',
+                ],
               );
               final path = result?.files.single.path;
               if (path == null) {
+                return;
+              }
+              if (!context.mounted) {
                 return;
               }
               // 校验音频格式是否与当前 ASR 模型兼容
@@ -1557,9 +1556,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: l10n.about,
                 subtitle: l10n.aboutDesc,
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const AboutScreen(),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
                 ),
               ),
             ],
@@ -2055,10 +2052,8 @@ class _StationEquipmentScreenState
               for (int i = 0; i < equipment.length; i++) ...[
                 _EquipmentTile(
                   equipment: equipment[i],
-                  onEdit: () => _showEquipmentDialog(
-                    index: i,
-                    equipment: equipment[i],
-                  ),
+                  onEdit: () =>
+                      _showEquipmentDialog(index: i, equipment: equipment[i]),
                   onDelete: () => _deleteEquipment(i),
                 ),
                 const SizedBox(height: 8),
@@ -2210,9 +2205,9 @@ class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.equipmentName)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(context.l10n.equipmentName)));
       return;
     }
     final powerLines = _powerController.text
@@ -2263,9 +2258,7 @@ class _EquipmentTile extends StatelessWidget {
     return ListTile(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(6),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       leading: const Icon(Icons.radio),
       title: Text(equipment.name),
@@ -2303,14 +2296,17 @@ class CallsignSettingsScreen extends ConsumerStatefulWidget {
       _CallsignSettingsScreenState();
 }
 
-class _CallsignSettingsScreenState extends ConsumerState<CallsignSettingsScreen> {
+class _CallsignSettingsScreenState
+    extends ConsumerState<CallsignSettingsScreen> {
   late final TextEditingController _callsignController;
   late final TextEditingController _qthController;
 
   @override
   void initState() {
     super.initState();
-    _callsignController = TextEditingController(text: ref.read(callsignProvider));
+    _callsignController = TextEditingController(
+      text: ref.read(callsignProvider),
+    );
     _qthController = TextEditingController(text: ref.read(qthProvider));
   }
 
@@ -2365,12 +2361,10 @@ class _CallsignSettingsScreenState extends ConsumerState<CallsignSettingsScreen>
     ref
         .read(appSettingsProvider.notifier)
         .setCallsign(_callsignController.text.trim());
-    ref
-        .read(appSettingsProvider.notifier)
-        .setQth(_qthController.text.trim());
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(context.l10n.equipmentSaved)),
-    );
+    ref.read(appSettingsProvider.notifier).setQth(_qthController.text.trim());
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(context.l10n.equipmentSaved)));
   }
 }
 
@@ -2604,10 +2598,7 @@ class _UsageStat extends StatelessWidget {
                 children: [
                   Icon(icon, size: 18, color: osc.phosphor),
                   const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
+                  Text(label, style: Theme.of(context).textTheme.labelMedium),
                 ],
               ),
               const SizedBox(height: 6),
@@ -2649,10 +2640,7 @@ class _TokenUsageItem extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(
-                  taskLabel,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+                Text(taskLabel, style: Theme.of(context).textTheme.labelSmall),
               ],
             ),
             const SizedBox(height: 6),
@@ -2739,7 +2727,10 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     final version = _packageInfo == null
         ? '-'
-        : packageVersionWithBuild(_packageInfo!.version, _packageInfo!.buildNumber);
+        : packageVersionWithBuild(
+            _packageInfo!.version,
+            _packageInfo!.buildNumber,
+          );
     return Scaffold(
       appBar: AppBar(title: Text(l10n.about)),
       body: ListView(
@@ -2964,8 +2955,8 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
     _loadingInitial = true;
     _providerKey = AiProvider.fromKey(provider.type);
     _nameController.text = provider.name;
-    _baseUrlController.text = provider.baseUrl ??
-        descriptorFor(_providerKey).defaultBaseUrl;
+    _baseUrlController.text =
+        provider.baseUrl ?? descriptorFor(_providerKey).defaultBaseUrl;
     Future.microtask(_loadExistingProvider);
   }
 
@@ -3213,15 +3204,14 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
           _apiKeyController.text = connection.apiKey ?? '';
         }
         final presets = _presetModelsFor(descriptor);
-        final persisted =
-            models
-                .map(
-                  (model) => FetchedProviderModel(
-                    id: model.name,
-                    capabilities: model.capabilities,
-                  ),
-                )
-                .toList();
+        final persisted = models
+            .map(
+              (model) => FetchedProviderModel(
+                id: model.name,
+                capabilities: model.capabilities,
+              ),
+            )
+            .toList();
         _models = _mergeFetchedModels(presets, persisted);
         _loadingInitial = false;
       });
@@ -3252,7 +3242,9 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
       return;
     }
     await _runBusy(() async {
-      await ref.read(providerStructuringClientProvider).probe(
+      await ref
+          .read(providerStructuringClientProvider)
+          .probe(
             descriptor: descriptor,
             baseUrl: _baseUrlController.text.trim().isEmpty
                 ? descriptor.defaultBaseUrl
@@ -3275,8 +3267,9 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
       return;
     }
     final descriptor = descriptorFor(_providerKey);
-    final effectiveBaseUrl =
-        baseUrl.isEmpty ? descriptor.defaultBaseUrl : baseUrl;
+    final effectiveBaseUrl = baseUrl.isEmpty
+        ? descriptor.defaultBaseUrl
+        : baseUrl;
     if (effectiveBaseUrl.isEmpty) {
       _showSnack(l10n.baseUrlRequired);
       return;
@@ -3653,9 +3646,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _antennaController = TextEditingController(
       text: draft.antenna?.value ?? '',
     );
-    _powerController = TextEditingController(
-      text: draft.power?.value ?? '',
-    );
+    _powerController = TextEditingController(text: draft.power?.value ?? '');
     _notesController = TextEditingController(text: draft.notes?.value ?? '');
     _dateTime = draft.dateTime.value;
     _band = draft.band.value.trim().isEmpty ? null : draft.band.value.trim();
@@ -3724,12 +3715,11 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                         const SizedBox(width: 8),
                         Text(
                           l10n.failed,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleSmall
+                          style: Theme.of(context).textTheme.titleSmall
                               ?.copyWith(
-                                color:
-                                    Theme.of(context).colorScheme.onErrorContainer,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onErrorContainer,
                               ),
                         ),
                       ],
@@ -3739,10 +3729,8 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                       Text(
                         _errorLabel(context, widget.draft.errorMessage!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onErrorContainer,
-                            ),
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -3898,8 +3886,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               _AntennaDropdown(controller: _antennaController),
               _PowerDropdown(
                 controller: _powerController,
-                powerOptions:
-                    _selectedEquipment?.powerOptions ?? const [],
+                powerOptions: _selectedEquipment?.powerOptions ?? const [],
               ),
             ],
           ),
@@ -4507,7 +4494,6 @@ class _TranscriptCard extends StatelessWidget {
     );
   }
 }
-
 
 class _LogListItem extends StatelessWidget {
   const _LogListItem({required this.log});
@@ -5268,10 +5254,9 @@ class _AntennaDropdown extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final equipment = ref.watch(stationEquipmentProvider).maybeWhen(
-          data: (v) => v,
-          orElse: () => const <StationEquipment>[],
-        );
+    final equipment = ref
+        .watch(stationEquipmentProvider)
+        .maybeWhen(data: (v) => v, orElse: () => const <StationEquipment>[]);
     final antennas = equipment
         .map((e) => e.antenna)
         .where((a) => a.isNotEmpty)
@@ -5304,10 +5289,7 @@ class _AntennaDropdown extends ConsumerWidget {
 }
 
 class _PowerDropdown extends StatelessWidget {
-  const _PowerDropdown({
-    required this.controller,
-    required this.powerOptions,
-  });
+  const _PowerDropdown({required this.controller, required this.powerOptions});
 
   final TextEditingController controller;
   final List<String> powerOptions;
@@ -5316,10 +5298,7 @@ class _PowerDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     if (powerOptions.isEmpty) {
-      return _ReviewField(
-        label: l10n.power,
-        controller: controller,
-      );
+      return _ReviewField(label: l10n.power, controller: controller);
     }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
