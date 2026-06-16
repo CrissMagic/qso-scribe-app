@@ -6,7 +6,7 @@ class AppDatabase {
   AppDatabase({Database? database}) : _database = database;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 4;
+  static const databaseVersion = 7;
 
   Database? _database;
 
@@ -49,6 +49,15 @@ class AppDatabase {
     }
     if (oldVersion < 4) {
       await _migrateToV4(db);
+    }
+    if (oldVersion < 5) {
+      await _migrateToV5(db);
+    }
+    if (oldVersion < 6) {
+      await _migrateToV6(db);
+    }
+    if (oldVersion < 7) {
+      await _migrateToV7(db);
     }
   }
 
@@ -103,6 +112,7 @@ CREATE TABLE IF NOT EXISTS qso_logs (
   notes TEXT,
   rig TEXT,
   antenna TEXT,
+  power TEXT,
   audio_path TEXT,
   raw_transcript TEXT,
   created_at TEXT NOT NULL,
@@ -173,6 +183,22 @@ CREATE TABLE IF NOT EXISTS ai_model_options (
   FOREIGN KEY(provider_id) REFERENCES provider_profiles(id) ON DELETE CASCADE
 )
 ''');
+
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS token_usage (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  task_type TEXT NOT NULL,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  total_tokens INTEGER
+)
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at)',
+    );
   }
 
   static Future<void> _migrateToV2(Database db) async {
@@ -237,6 +263,47 @@ CREATE TABLE IF NOT EXISTS ai_model_options (
     });
   }
 
+  // v5：固定供应商重构的一次性重置。
+  // 清空旧的自定义供应商/模型/分配配置；此后新增供应商不再需要任何 schema 变更，
+  // 供应商身份完全由 provider_catalog 中的稳定 key 表达。
+  static Future<void> _migrateToV5(Database db) async {
+    await db.transaction((txn) async {
+      await txn.delete('model_assignments');
+      await txn.delete('ai_model_options');
+      await txn.delete('provider_profiles');
+    });
+  }
+
+  // v6：qso_logs 增加 power（发射功率）列。
+  static Future<void> _migrateToV6(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(qso_logs)');
+    final hasPower = columns.any((row) => row['name'] == 'power');
+    if (!hasPower) {
+      await db.execute(
+        'ALTER TABLE qso_logs ADD COLUMN power TEXT',
+      );
+    }
+  }
+
+  // v7：新增 token_usage 表记录 AI 请求消耗。
+  static Future<void> _migrateToV7(Database db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS token_usage (
+  id TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  task_type TEXT NOT NULL,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  total_tokens INTEGER
+)
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at)',
+    );
+  }
+
   static Future<void> _migrateQsoLogsDateTimeNullable(
     DatabaseExecutor db,
   ) async {
@@ -273,6 +340,7 @@ CREATE TABLE qso_logs (
   notes TEXT,
   rig TEXT,
   antenna TEXT,
+  power TEXT,
   audio_path TEXT,
   raw_transcript TEXT,
   created_at TEXT NOT NULL,
@@ -449,7 +517,7 @@ FROM import_jobs_v1
   static Future<void> _seedSettings(DatabaseExecutor db) async {
     final defaults = <String, String>{
       'localeMode': 'system',
-      'transcriptionMode': 'streaming',
+      'transcriptionMode': 'afterQso',
       'failureHandling': 'alert',
       'audioRetentionPolicy': 'keep',
       'checkUpdatesOnStartup': 'true',

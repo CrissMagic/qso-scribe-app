@@ -226,7 +226,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get format => 'Format';
 
   @override
-  String get rawTranscript => 'Raw transcript text';
+  String get rawTranscript => 'Raw text';
 
   @override
   String get selectedForExport => 'QSOs selected for export';
@@ -612,7 +612,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get invalidFrequency => 'Frequency must be between 0.1 and 30000 MHz';
 
   @override
-  String get providerTypeHint => 'If unsure, choose OpenAI';
+  String get providerTypeHint => 'Choose a supported provider';
 
   @override
   String get baseUrlHint => 'Ends with /v1, e.g. https://api.openai.com/v1';
@@ -741,4 +741,281 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get invalidApkPath => 'Package path is invalid';
+
+  @override
+  String get providerWithoutAsr =>
+      'This provider does not support speech recognition';
+
+  @override
+  String get connectionTestFailed => 'Connection test failed';
+
+  @override
+  String get yourCallsign => 'Your callsign';
+
+  @override
+  String get yourCallsignHint =>
+      'Enter your amateur radio callsign, e.g. BV2AAA';
+
+  @override
+  String get yourQth => 'My QTH (station location)';
+
+  @override
+  String get yourQthHint => 'e.g. Shanghai, or a grid locator like PM95';
+
+  @override
+  String get save => 'Save';
+
+  @override
+  String get sortNewestFirst => 'Newest first';
+
+  @override
+  String get sortOldestFirst => 'Oldest first';
+
+  @override
+  String get filterDimensionStatus => 'Status';
+
+  @override
+  String get filterDimensionBand => 'Band';
+
+  @override
+  String get filterDimensionMode => 'Mode';
+
+  @override
+  String get paste => 'Paste';
+
+  @override
+  String get transcriptionModelAfter => 'After-QSO transcription model';
+
+  @override
+  String get transcriptionModelStreaming => 'Real-time transcription model';
+
+  @override
+  String get tokenUsage => 'Token usage';
+
+  @override
+  String get tokenUsageDesc => 'View AI request consumption';
+
+  @override
+  String get totalTokens => 'Total tokens';
+
+  @override
+  String get requestCount => 'Requests';
+
+  @override
+  String get promptTokens => 'Prompt';
+
+  @override
+  String get completionTokens => 'Completion';
+
+  @override
+  String get clearRecords => 'Clear records';
+
+  @override
+  String get noTokenRecords => 'No usage records yet';
+
+  @override
+  String get clearRecordsConfirm => 'Clear all token usage records?';
+
+  @override
+  String get taskTranscription => 'Transcription';
+
+  @override
+  String get taskStructuring => 'Structuring';
+
+  @override
+  String get taskStreaming => 'Real-time';
+
+  @override
+  String get usageUnknown => '—';
+
+  @override
+  String get failedReason => 'Failure reason';
+
+  @override
+  String get retrying => 'Retrying…';
+
+  @override
+  String get statusDraft2 => 'Draft';
+
+  @override
+  String get statusNeedsReview2 => 'Review';
+
+  @override
+  String get statusConfirmed2 => 'Confirmed';
+
+  @override
+  String get importedAsDraft => 'Imported as draft';
+
+  @override
+  String get callsignSetup => 'Callsign setup';
+
+  @override
+  String get callsignSetupDesc => 'Enter your callsign for quick QSO logging';
+
+  @override
+  String get stationEquipment => 'Station equipment';
+
+  @override
+  String get stationEquipmentDesc =>
+      'Manage rigs, antennas, and power settings';
+
+  @override
+  String get equipmentName => 'Equipment name';
+
+  @override
+  String get equipmentNameHint => 'e.g. IC-7300, FT-991A';
+
+  @override
+  String get antennaName => 'Antenna';
+
+  @override
+  String get antennaNameHint => 'e.g. DP-80, Hexbeam';
+
+  @override
+  String get powerOptions => 'Power options';
+
+  @override
+  String get powerOptionsHint => 'One value per line, e.g. 5W, 10W, 50W, 100W';
+
+  @override
+  String get addEquipment => 'Add equipment';
+
+  @override
+  String get noEquipmentSaved => 'No equipment configured yet';
+
+  @override
+  String get equipmentSaved => 'Equipment saved';
+
+  @override
+  String get power => 'Power';
+
+  @override
+  String get selectEquipment => 'Select equipment';
+
+  @override
+  String get welcomeTitle => 'Welcome to QSO Scribe';
+
+  @override
+  String welcomeCallsign(Object callsign) {
+    return 'Welcome, $callsign';
+  }
+
+  @override
+  String get welcomeSubtitle => 'Ready to log your next QSO';
+
+  @override
+  String get skipWelcome => 'Enter';
+
+  @override
+  String get rawText => 'Raw text';
+
+  @override
+  String get about => 'About';
+
+  @override
+  String get aboutDesc => 'App info, privacy policy, and credits';
+
+  @override
+  String get appDescription =>
+      'Hi, glad you\'re here. This is a community-maintained amateur radio QSO logging tool built with AI assistance.';
+
+  @override
+  String get privacyPolicy => 'Privacy Policy';
+
+  @override
+  String get openSourceCredits => 'Open Source Credits';
+
+  @override
+  String get relatedLinks => 'Related Links';
+
+  @override
+  String get contestMode => 'Contest';
+
+  @override
+  String get contestModeDesc => 'Fast QSO entry for contest operation';
+
+  @override
+  String get filter => 'Filter';
+
+  @override
+  String get noMoreData => 'No more data';
+
+  @override
+  String get pullToRefresh => 'Pull to refresh';
+
+  @override
+  String get recording => 'Recording';
+
+  @override
+  String get afterTranscribe => 'After QSO';
+
+  @override
+  String get realtimeTranscribe => 'Real-time';
+
+  @override
+  String get stationSettings => 'Station settings';
+
+  @override
+  String get stationSettingsDesc => 'Callsign, rig, antenna and power';
+
+  @override
+  String get aiModels => 'AI models';
+
+  @override
+  String get aiModelsDesc => 'Provider and model configuration';
+
+  @override
+  String get appSettings => 'App settings';
+
+  @override
+  String get appSettingsDesc => 'Language, audio, and update preferences';
+
+  @override
+  String get aiProcess => 'AI Process';
+
+  @override
+  String get discardAndRestart => 'Discard & restart';
+
+  @override
+  String get afterQsoRecorderHint =>
+      'Recording in progress. Audio will be transcribed and structured after you stop.';
+
+  @override
+  String get streamingStoppedHint =>
+      'Recording stopped. Review the transcript above, then tap AI Process to structure it.';
+
+  @override
+  String aboutAppVersion(Object version) {
+    return 'Version $version';
+  }
+
+  @override
+  String get privacyPolicyBody =>
+      'All data (QSO logs, audio, transcripts, and settings) is stored locally on your device. API keys are kept on-device and only sent to the AI provider you configure. No data is collected, uploaded to our servers, or shared with third parties.';
+
+  @override
+  String get openSourceCreditsBody =>
+      'Built with Flutter, Riverpod, sqflite, record, file_picker, and many other open-source packages. See pubspec.yaml for the full dependency list.';
+
+  @override
+  String get relatedLinksBody =>
+      'Project homepage, issue tracker, and release downloads are hosted on GitHub. Visit the Software Update screen to check for the latest release.';
+
+  @override
+  String get githubLink => 'GitHub Repository';
+
+  @override
+  String get continueButton => 'Continue';
+
+  @override
+  String get audioFormatWarningTitle => 'Audio format warning';
+
+  @override
+  String audioFormatWarningBody(
+    String provider,
+    String format,
+    String supported,
+  ) {
+    return 'The current ASR model ($provider) may not support .$format format. Supported: $supported. Continue anyway?';
+  }
 }

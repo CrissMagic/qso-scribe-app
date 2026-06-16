@@ -10,7 +10,7 @@ enum LogStatus { draft, needsReview, confirmed, exported, failed }
 
 enum ModelCapability { speech, streaming, text, structuring }
 
-enum ModelAssignmentTask { transcription, structuring }
+enum ModelAssignmentTask { transcription, transcriptionStreaming, structuring }
 
 extension AppLocaleModeX on AppLocaleMode {
   Locale? get locale {
@@ -105,8 +105,10 @@ class QsoDraft {
     this.notes,
     this.rig,
     this.antenna,
+    this.power,
     this.audioPath,
     this.rawTranscript,
+    this.errorMessage,
   });
 
   final String? id;
@@ -123,8 +125,12 @@ class QsoDraft {
   final QsoField<String>? notes;
   final QsoField<String>? rig;
   final QsoField<String>? antenna;
+  final QsoField<String>? power;
   final String? audioPath;
   final String? rawTranscript;
+
+  /// 失败原因（仅 failed 状态，不持久化到数据库）。
+  final String? errorMessage;
 
   bool get hasRequiredFields {
     return callsign.value.trim().isNotEmpty &&
@@ -150,8 +156,10 @@ class QsoDraft {
     QsoField<String>? notes,
     QsoField<String>? rig,
     QsoField<String>? antenna,
+    QsoField<String>? power,
     String? audioPath,
     String? rawTranscript,
+    String? errorMessage,
     bool clearAudioPath = false,
     bool clearRawTranscript = false,
   }) {
@@ -170,10 +178,12 @@ class QsoDraft {
       notes: notes ?? this.notes,
       rig: rig ?? this.rig,
       antenna: antenna ?? this.antenna,
+      power: power ?? this.power,
       audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
       rawTranscript: clearRawTranscript
           ? null
           : rawTranscript ?? this.rawTranscript,
+      errorMessage: errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -183,16 +193,21 @@ class QsoCaptureState {
     required this.currentDraft,
     this.transcriptSegments = const [],
     this.warningMessage,
+    this.pendingStructuring = false,
   });
 
   final QsoDraft currentDraft;
   final List<TranscriptSegment> transcriptSegments;
   final String? warningMessage;
 
+  /// 流式录音已停止，转写文本待用户点击 AI 处理进行结构化。
+  final bool pendingStructuring;
+
   QsoCaptureState copyWith({
     QsoDraft? currentDraft,
     List<TranscriptSegment>? transcriptSegments,
     String? warningMessage,
+    bool? pendingStructuring,
     bool clearWarning = false,
   }) {
     return QsoCaptureState(
@@ -201,6 +216,7 @@ class QsoCaptureState {
       warningMessage: clearWarning
           ? null
           : warningMessage ?? this.warningMessage,
+      pendingStructuring: pendingStructuring ?? this.pendingStructuring,
     );
   }
 }
@@ -275,6 +291,8 @@ class AppSettings {
     required this.failureHandling,
     required this.audioRetentionPolicy,
     required this.checkUpdatesOnStartup,
+    this.callsign = '',
+    this.qth = '',
   });
 
   const AppSettings.defaults()
@@ -282,13 +300,17 @@ class AppSettings {
       transcriptionMode = TranscriptionMode.streaming,
       failureHandling = FailureHandling.alert,
       audioRetentionPolicy = AudioRetentionPolicy.keep,
-      checkUpdatesOnStartup = true;
+      checkUpdatesOnStartup = true,
+      callsign = '',
+      qth = '';
 
   final AppLocaleMode localeMode;
   final TranscriptionMode transcriptionMode;
   final FailureHandling failureHandling;
   final AudioRetentionPolicy audioRetentionPolicy;
   final bool checkUpdatesOnStartup;
+  final String callsign;
+  final String qth;
 
   AppSettings copyWith({
     AppLocaleMode? localeMode,
@@ -296,6 +318,8 @@ class AppSettings {
     FailureHandling? failureHandling,
     AudioRetentionPolicy? audioRetentionPolicy,
     bool? checkUpdatesOnStartup,
+    String? callsign,
+    String? qth,
   }) {
     return AppSettings(
       localeMode: localeMode ?? this.localeMode,
@@ -304,8 +328,67 @@ class AppSettings {
       audioRetentionPolicy: audioRetentionPolicy ?? this.audioRetentionPolicy,
       checkUpdatesOnStartup:
           checkUpdatesOnStartup ?? this.checkUpdatesOnStartup,
+      callsign: callsign ?? this.callsign,
+      qth: qth ?? this.qth,
     );
   }
+}
+
+/// 单条电台设备配置。
+class StationEquipment {
+  const StationEquipment({
+    required this.name,
+    this.antenna = '',
+    this.powerOptions = const [],
+  });
+
+  final String name;
+  final String antenna;
+  final List<String> powerOptions;
+
+  StationEquipment copyWith({
+    String? name,
+    String? antenna,
+    List<String>? powerOptions,
+  }) {
+    return StationEquipment(
+      name: name ?? this.name,
+      antenna: antenna ?? this.antenna,
+      powerOptions: powerOptions ?? this.powerOptions,
+    );
+  }
+}
+
+/// 单次 AI 请求返回的 token 用量（可能为 null，部分接口不返回）。
+class TokenUsage {
+  const TokenUsage({this.promptTokens, this.completionTokens, this.totalTokens});
+
+  final int? promptTokens;
+  final int? completionTokens;
+  final int? totalTokens;
+}
+
+/// 持久化的 token 消耗记录。
+class TokenUsageRecord {
+  const TokenUsageRecord({
+    required this.id,
+    required this.createdAt,
+    required this.provider,
+    required this.model,
+    required this.taskType,
+    this.promptTokens,
+    this.completionTokens,
+    this.totalTokens,
+  });
+
+  final String id;
+  final DateTime createdAt;
+  final String provider;
+  final String model;
+  final String taskType;
+  final int? promptTokens;
+  final int? completionTokens;
+  final int? totalTokens;
 }
 
 class ModelAssignment {

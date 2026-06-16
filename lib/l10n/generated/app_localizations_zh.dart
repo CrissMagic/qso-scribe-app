@@ -219,7 +219,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get format => '格式';
 
   @override
-  String get rawTranscript => '原始转写文本';
+  String get rawTranscript => '原始文本';
 
   @override
   String get selectedForExport => '条 QSO 将被导出';
@@ -586,7 +586,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get invalidFrequency => '频率必须在 0.1 至 30000 MHz 之间';
 
   @override
-  String get providerTypeHint => '如果不确定,选 OpenAI';
+  String get providerTypeHint => '选择一个受支持的供应商';
 
   @override
   String get baseUrlHint => '通常以 /v1 结尾,如 https://api.openai.com/v1';
@@ -710,4 +710,275 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get invalidApkPath => '安装包路径无效';
+
+  @override
+  String get providerWithoutAsr => '该供应商不支持语音识别';
+
+  @override
+  String get connectionTestFailed => '连接测试失败';
+
+  @override
+  String get yourCallsign => '您的呼号';
+
+  @override
+  String get yourCallsignHint => '输入您的业余无线电呼号，例如 BV2AAA';
+
+  @override
+  String get yourQth => '我的 QTH（电台位置）';
+
+  @override
+  String get yourQthHint => '例如：上海，或网格定位 PM95';
+
+  @override
+  String get save => '保存';
+
+  @override
+  String get sortNewestFirst => '最新优先';
+
+  @override
+  String get sortOldestFirst => '最早优先';
+
+  @override
+  String get filterDimensionStatus => '状态';
+
+  @override
+  String get filterDimensionBand => '频段';
+
+  @override
+  String get filterDimensionMode => '通联方式';
+
+  @override
+  String get paste => '粘贴';
+
+  @override
+  String get transcriptionModelAfter => '后置转写模型';
+
+  @override
+  String get transcriptionModelStreaming => '实时转写模型';
+
+  @override
+  String get tokenUsage => 'Token 消耗';
+
+  @override
+  String get tokenUsageDesc => '查看 AI 请求消耗记录';
+
+  @override
+  String get totalTokens => '总消耗';
+
+  @override
+  String get requestCount => '请求次数';
+
+  @override
+  String get promptTokens => '输入';
+
+  @override
+  String get completionTokens => '输出';
+
+  @override
+  String get clearRecords => '清除记录';
+
+  @override
+  String get noTokenRecords => '暂无消耗记录';
+
+  @override
+  String get clearRecordsConfirm => '确认清除所有 Token 消耗记录？';
+
+  @override
+  String get taskTranscription => '后置转写';
+
+  @override
+  String get taskStructuring => '结构化';
+
+  @override
+  String get taskStreaming => '实时转写';
+
+  @override
+  String get usageUnknown => '—';
+
+  @override
+  String get failedReason => '失败原因';
+
+  @override
+  String get retrying => '重试中…';
+
+  @override
+  String get statusDraft2 => '草稿';
+
+  @override
+  String get statusNeedsReview2 => '待确认';
+
+  @override
+  String get statusConfirmed2 => '已确认';
+
+  @override
+  String get importedAsDraft => '已作为草稿导入';
+
+  @override
+  String get callsignSetup => '呼号设置';
+
+  @override
+  String get callsignSetupDesc => '输入呼号以便快速记录 QSO';
+
+  @override
+  String get stationEquipment => '电台设备';
+
+  @override
+  String get stationEquipmentDesc => '管理设备、天线和功率设置';
+
+  @override
+  String get equipmentName => '设备名称';
+
+  @override
+  String get equipmentNameHint => '例如 IC-7300、FT-991A';
+
+  @override
+  String get antennaName => '天线';
+
+  @override
+  String get antennaNameHint => '例如 DP-80、Hexbeam';
+
+  @override
+  String get powerOptions => '功率选项';
+
+  @override
+  String get powerOptionsHint => '每行一个值，例如 5W、10W、50W、100W';
+
+  @override
+  String get addEquipment => '添加设备';
+
+  @override
+  String get noEquipmentSaved => '尚未配置设备';
+
+  @override
+  String get equipmentSaved => '设备已保存';
+
+  @override
+  String get power => '功率';
+
+  @override
+  String get selectEquipment => '选择设备';
+
+  @override
+  String get welcomeTitle => '欢迎使用 QSO Scribe';
+
+  @override
+  String welcomeCallsign(Object callsign) {
+    return '欢迎，$callsign';
+  }
+
+  @override
+  String get welcomeSubtitle => '准备好记录下一次 QSO';
+
+  @override
+  String get skipWelcome => '进入';
+
+  @override
+  String get rawText => '原始文本';
+
+  @override
+  String get about => '关于';
+
+  @override
+  String get aboutDesc => '应用信息、隐私政策和致谢';
+
+  @override
+  String get appDescription =>
+      'Hi，很高兴你能看到这里，这是一个由社区维护的业余无线电 QSO 记录工具，借助 AI 辅助开发。';
+
+  @override
+  String get privacyPolicy => '隐私政策';
+
+  @override
+  String get openSourceCredits => '开源致谢';
+
+  @override
+  String get relatedLinks => '相关链接';
+
+  @override
+  String get contestMode => '比赛模式';
+
+  @override
+  String get contestModeDesc => '比赛中快速记录 QSO';
+
+  @override
+  String get filter => '筛选';
+
+  @override
+  String get noMoreData => '没有更多数据';
+
+  @override
+  String get pullToRefresh => '下拉刷新';
+
+  @override
+  String get recording => '录音中';
+
+  @override
+  String get afterTranscribe => '后置转写';
+
+  @override
+  String get realtimeTranscribe => '实时转写';
+
+  @override
+  String get stationSettings => '电台设置';
+
+  @override
+  String get stationSettingsDesc => '呼号、设备、天线和功率';
+
+  @override
+  String get aiModels => 'AI 模型';
+
+  @override
+  String get aiModelsDesc => '供应商和模型配置';
+
+  @override
+  String get appSettings => '应用设置';
+
+  @override
+  String get appSettingsDesc => '语言、音频和更新偏好';
+
+  @override
+  String get aiProcess => 'AI 处理';
+
+  @override
+  String get discardAndRestart => '丢弃，重新录音';
+
+  @override
+  String get afterQsoRecorderHint => '正在录音，停止后音频将自动转写并结构化。';
+
+  @override
+  String get streamingStoppedHint => '录音已停止。请核对上方转写文本，然后点击 AI 处理进行结构化。';
+
+  @override
+  String aboutAppVersion(Object version) {
+    return '版本 $version';
+  }
+
+  @override
+  String get privacyPolicyBody =>
+      '所有数据（QSO 日志、音频、转写文本和设置）均保存在本地设备上。API 密钥仅存储于本机，并仅发送给您配置的 AI 供应商。我们不收集、不上传、不与第三方共享任何数据。';
+
+  @override
+  String get openSourceCreditsBody =>
+      '本应用基于 Flutter、Riverpod、sqflite、record、file_picker 等众多开源软件构建。完整依赖列表请查看 pubspec.yaml。';
+
+  @override
+  String get relatedLinksBody => '项目主页、问题追踪和版本下载托管在 GitHub。可在软件更新页面查看最新发布版本。';
+
+  @override
+  String get githubLink => 'GitHub 仓库';
+
+  @override
+  String get continueButton => '继续';
+
+  @override
+  String get audioFormatWarningTitle => '音频格式警告';
+
+  @override
+  String audioFormatWarningBody(
+    String provider,
+    String format,
+    String supported,
+  ) {
+    return '当前 ASR 模型（$provider）可能不支持 .$format 格式。支持格式：$supported。是否继续？';
+  }
 }

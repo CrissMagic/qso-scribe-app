@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -12,14 +13,18 @@ import '../data/import_repository.dart';
 import '../data/model_assignment_repository.dart';
 import '../data/model_repository.dart';
 import '../data/provider_repository.dart';
+import '../data/token_usage_repository.dart';
 import '../data/qso_repository.dart';
 import '../data/settings_repository.dart';
 import '../domain/app_models.dart';
+import '../domain/provider_catalog.dart';
+import '../domain/service_contracts.dart';
+import '../services/ai_provider_clients.dart';
 import '../services/app_update_service.dart';
 import '../services/heuristic_qso_structuring_service.dart';
 import '../services/local_audio_playback_service.dart';
-import '../services/provider_model_fetch_service.dart';
 import '../services/qso_processing_service.dart';
+import '../services/qwen_realtime_speech_provider.dart';
 import '../services/record_audio_capture_service.dart';
 import '../services/release_info_service.dart';
 
@@ -53,12 +58,16 @@ final exportHistoryRepositoryProvider = Provider<ExportHistoryRepository>(
   (ref) => ExportHistoryRepository(ref.watch(appDatabaseProvider)),
 );
 
+final tokenUsageRepositoryProvider = Provider<TokenUsageRepository>(
+  (ref) => TokenUsageRepository(ref.watch(appDatabaseProvider)),
+);
+
 final exportServiceProvider = Provider<ExportService>(
   (ref) => ExportService(ref.watch(qsoRepositoryProvider)),
 );
 
-final providerModelFetchServiceProvider = Provider<ProviderModelFetchService>(
-  (ref) => ProviderModelFetchService(),
+final providerStructuringClientProvider = Provider<ProviderStructuringClient>(
+  (ref) => ProviderStructuringClient(http.Client()),
 );
 
 final releaseInfoServiceProvider = Provider<ReleaseInfoService>((ref) {
@@ -341,6 +350,7 @@ final qsoProcessingServiceProvider = Provider<QsoProcessingService>(
     modelAssignmentRepository: ref.watch(modelAssignmentRepositoryProvider),
     modelRepository: ref.watch(modelRepositoryProvider),
     heuristicStructuringService: ref.watch(qsoStructuringServiceProvider),
+    tokenUsageRepository: ref.watch(tokenUsageRepositoryProvider),
   ),
 );
 
@@ -378,6 +388,16 @@ class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
   Future<void> setCheckUpdatesOnStartup(bool value) async {
     final current = await future;
     await updateSettings(current.copyWith(checkUpdatesOnStartup: value));
+  }
+
+  Future<void> setCallsign(String value) async {
+    final current = await future;
+    await updateSettings(current.copyWith(callsign: value));
+  }
+
+  Future<void> setQth(String value) async {
+    final current = await future;
+    await updateSettings(current.copyWith(qth: value));
   }
 }
 
@@ -431,6 +451,41 @@ final checkUpdatesOnStartupProvider = Provider<bool>(
       ),
 );
 
+final callsignProvider = Provider<String>(
+  (ref) => ref
+      .watch(appSettingsProvider)
+      .maybeWhen(
+        data: (settings) => settings.callsign,
+        orElse: () => '',
+      ),
+);
+
+final qthProvider = Provider<String>(
+  (ref) => ref
+      .watch(appSettingsProvider)
+      .maybeWhen(
+        data: (settings) => settings.qth,
+        orElse: () => '',
+      ),
+);
+
+class StationEquipmentNotifier extends AsyncNotifier<List<StationEquipment>> {
+  @override
+  Future<List<StationEquipment>> build() {
+    return ref.watch(settingsRepositoryProvider).loadEquipment();
+  }
+
+  Future<void> save(List<StationEquipment> equipment) async {
+    state = AsyncData(equipment);
+    await ref.read(settingsRepositoryProvider).saveEquipment(equipment);
+  }
+}
+
+final stationEquipmentProvider =
+    AsyncNotifierProvider<StationEquipmentNotifier, List<StationEquipment>>(
+      StationEquipmentNotifier.new,
+    );
+
 class SetupCompletedNotifier extends AsyncNotifier<bool> {
   @override
   Future<bool> build() {
@@ -446,6 +501,23 @@ class SetupCompletedNotifier extends AsyncNotifier<bool> {
 final setupCompletedProvider =
     AsyncNotifierProvider<SetupCompletedNotifier, bool>(
       SetupCompletedNotifier.new,
+    );
+
+class WelcomeShownNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() {
+    return ref.watch(settingsRepositoryProvider).loadWelcomeShown();
+  }
+
+  Future<void> markShown() async {
+    state = const AsyncData(true);
+    await ref.read(settingsRepositoryProvider).saveWelcomeShown();
+  }
+}
+
+final welcomeShownProvider =
+    AsyncNotifierProvider<WelcomeShownNotifier, bool>(
+      WelcomeShownNotifier.new,
     );
 
 class RecordingSessionNotifier extends Notifier<RecordingSessionState> {
@@ -530,21 +602,250 @@ final recordingSessionProvider =
 class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   @override
   Future<QsoCaptureState> build() async {
+    // 释放时清理流式资源（WebSocket + 订阅），避免泄漏。
+    ref.onDispose(() {
+      unawaited(_stopStreaming());
+    });
     return QsoCaptureState(currentDraft: _emptyDraft());
   }
+
+  SpeechTranscriptionProvider? _streamingProvider;
+  StreamSubscription<AudioFrame>? _frameSub;
+  StreamSubscription<TranscriptSegment>? _transcriptSub;
+  List<String> _finalTranscripts = [];
+  String? _partial;
 
   void startQso({
     required TranscriptionMode mode,
     required DateTime startedAt,
   }) {
-    final warning = mode == TranscriptionMode.streaming
-        ? 'streaming_not_configured'
-        : null;
+    _finalTranscripts = [];
+    _partial = null;
     state = AsyncData(
-      QsoCaptureState(
-        currentDraft: _emptyDraft(dateTime: startedAt),
-        warningMessage: warning,
+      QsoCaptureState(currentDraft: _emptyDraft(dateTime: startedAt)),
+    );
+    if (mode == TranscriptionMode.streaming) {
+      _beginStreaming();
+    }
+  }
+
+  // 解析并启动流式转写：仅支持实现了实时传输的供应商（当前为 Qwen）。
+  Future<void> _beginStreaming() async {
+    try {
+      final provider = await _resolveStreamingProvider();
+      if (provider == null) {
+        _updateCapture(
+          (state) => state.copyWith(warningMessage: 'streaming_not_configured'),
+        );
+        return;
+      }
+      _streamingProvider = provider;
+      await provider.startSession(
+        const SpeechSessionConfig(
+          providerId: '',
+          modelId: '',
+          mode: TranscriptionMode.streaming,
+        ),
+      );
+      _frameSub = ref
+          .read(audioCaptureServiceProvider)
+          .frames
+          .listen((frame) => unawaited(provider.sendAudioFrame(frame)));
+      _transcriptSub = provider.transcriptEvents.listen(
+        _onTranscript,
+        onError: (Object error) {
+          _updateCapture(
+            (state) => state.copyWith(warningMessage: 'no_streaming_transcript'),
+          );
+        },
+      );
+      _updateCapture((state) => state.copyWith(warningMessage: null));
+    } catch (_) {
+      await _stopStreaming();
+      _updateCapture(
+        (state) => state.copyWith(warningMessage: 'streaming_not_configured'),
+      );
+    }
+  }
+
+  Future<SpeechTranscriptionProvider?> _resolveStreamingProvider() async {
+    final assignments =
+        await ref.read(modelAssignmentRepositoryProvider).listAssignments();
+    String? providerId;
+    String? modelId;
+    for (final assignment in assignments) {
+      if (assignment.task == ModelAssignmentTask.transcriptionStreaming) {
+        providerId = assignment.providerId;
+        modelId = assignment.modelId;
+        break;
+      }
+    }
+    // 向后兼容：未单独配置实时转写时回退到后置转写配置
+    if (providerId == null || modelId == null) {
+      for (final assignment in assignments) {
+        if (assignment.task == ModelAssignmentTask.transcription) {
+          providerId = providerId ?? assignment.providerId;
+          modelId = modelId ?? assignment.modelId;
+          break;
+        }
+      }
+    }
+    if (providerId == null || modelId == null) {
+      return null;
+    }
+    final connection =
+        await ref.read(providerRepositoryProvider).findConnection(providerId);
+    if (connection == null ||
+        connection.apiKey == null ||
+        connection.apiKey!.isEmpty) {
+      return null;
+    }
+    final descriptor = descriptorFor(AiProvider.fromKey(connection.type));
+    if (!descriptor.streamingCapable) {
+      return null;
+    }
+    // 当前仅实现了 Qwen 实时传输。
+    if (descriptor.provider != AiProvider.qwen) {
+      return null;
+    }
+    final models = await ref.read(modelRepositoryProvider).listModels();
+    AiModelOption? model;
+    for (final option in models) {
+      if (option.id == modelId) {
+        model = option;
+        break;
+      }
+    }
+    if (model == null || !model.supports(ModelCapability.streaming)) {
+      return null;
+    }
+    return QwenRealtimeSpeechProvider(
+      apiKey: connection.apiKey!,
+      modelName: model.name,
+    );
+  }
+
+  void _onTranscript(TranscriptSegment segment) {
+    if (segment.isFinal) {
+      if (segment.text.trim().isNotEmpty) {
+        _finalTranscripts.add(segment.text.trim());
+      }
+      _partial = null;
+    } else {
+      _partial = segment.text;
+    }
+    final segments = <TranscriptSegment>[
+      for (final text in _finalTranscripts)
+        TranscriptSegment(speaker: 'RX', text: text, isFinal: true),
+      if (_partial != null && _partial!.trim().isNotEmpty)
+        TranscriptSegment(speaker: 'RX', text: _partial!, isFinal: false),
+    ];
+    _updateCapture((state) => state.copyWith(transcriptSegments: segments));
+  }
+
+  Future<void> _stopStreaming() async {
+    await _frameSub?.cancel();
+    _frameSub = null;
+    final provider = _streamingProvider;
+    _streamingProvider = null;
+    // 先停帧上传，再让 provider 收尾（等待最后一句的 completed 与 session.finished）。
+    // 期间转写订阅保持有效，确保最后一句的最终结果不被丢弃。
+    await provider?.stop();
+    await _transcriptSub?.cancel();
+    _transcriptSub = null;
+  }
+
+  /// 停止流式转写但保留转写文本，等待用户点击 AI 处理再结构化。
+  /// 不清空 [_finalTranscripts]，设置 pendingStructuring 标志。
+  Future<QsoDraft> stopQsoStreaming({
+    required String? audioPath,
+    required DateTime? startedAt,
+  }) async {
+    final current = await future;
+    await _stopStreaming();
+    final rawText = <String>[
+      ..._finalTranscripts,
+      if (_partial != null && _partial!.trim().isNotEmpty) _partial!,
+    ].join('\n');
+    // 将最终 partial 合并进 finalTranscripts，以便 UI 展示完整文本
+    if (_partial != null && _partial!.trim().isNotEmpty) {
+      _finalTranscripts.add(_partial!.trim());
+      _partial = null;
+      _updateCapture((s) => s.copyWith(transcriptSegments: [
+        for (final text in _finalTranscripts)
+          TranscriptSegment(speaker: 'RX', text: text, isFinal: true),
+      ]));
+    }
+    final draft = current.currentDraft.copyWith(
+      audioPath: audioPath,
+      rawTranscript: rawText.trim().isEmpty ? null : rawText,
+      dateTime: QsoField(value: startedAt ?? current.currentDraft.dateTime.value),
+      status: LogStatus.draft,
+    );
+    state = AsyncData(
+      current.copyWith(
+        currentDraft: draft,
+        pendingStructuring: rawText.trim().isNotEmpty,
       ),
+    );
+    return draft;
+  }
+
+  /// 将当前保留的流式转写文本结构化为 QSO 草稿。
+  Future<QsoDraft> structureCapturedTranscript() async {
+    final current = await future;
+    final rawText = <String>[
+      ..._finalTranscripts,
+      if (_partial != null && _partial!.trim().isNotEmpty) _partial!,
+    ].join('\n');
+    _finalTranscripts = [];
+    _partial = null;
+
+    if (rawText.trim().isEmpty) {
+      final draft = current.currentDraft.copyWith(
+        status: LogStatus.needsReview,
+        rawTranscript: null,
+      );
+      state = AsyncData(
+        current.copyWith(
+          currentDraft: draft,
+          pendingStructuring: false,
+          warningMessage: 'no_streaming_transcript',
+        ),
+      );
+      return draft;
+    }
+
+    final audioPath = current.currentDraft.audioPath;
+    final dateTime = current.currentDraft.dateTime.value;
+    QsoDraft draft;
+    try {
+      draft = await ref.read(qsoProcessingServiceProvider).createDraftFromText(
+        rawText,
+        audioPath: audioPath,
+        dateTime: dateTime,
+      );
+    } catch (_) {
+      draft = current.currentDraft.copyWith(
+        rawTranscript: rawText,
+        status: LogStatus.needsReview,
+      );
+    }
+    final retainedDraft = await _applyRecognitionRetention(draft);
+    state = AsyncData(
+      current.copyWith(
+        currentDraft: retainedDraft,
+        pendingStructuring: false,
+        clearWarning: true,
+      ),
+    );
+    return retainedDraft;
+  }
+
+  void _updateCapture(QsoCaptureState Function(QsoCaptureState) updater) {
+    state = state.maybeWhen(
+      data: (current) => AsyncData(updater(current)),
+      orElse: () => state,
     );
   }
 
@@ -594,6 +895,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
           audioPath: audioPath,
           rawTranscript: rawTranscript,
           status: LogStatus.failed,
+          errorMessage: error.toString(),
         );
         state = AsyncData(
           current.copyWith(
@@ -607,30 +909,9 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       }
     }
 
-    final rawText = current.transcriptSegments
-        .where((segment) => segment.text.trim().isNotEmpty)
-        .map((segment) => segment.text.trim())
-        .join('\n');
-    final draft = rawText.isEmpty
-        ? current.currentDraft.copyWith(
-            audioPath: audioPath,
-            status: LogStatus.needsReview,
-          )
-        : ref
-              .read(qsoStructuringServiceProvider)
-              .createDraftFromText(
-                rawText: rawText,
-                audioPath: audioPath,
-                dateTime: startedAt,
-              );
-    final retainedDraft = await _applyRecognitionRetention(draft);
-    state = AsyncData(
-      current.copyWith(
-        currentDraft: retainedDraft,
-        warningMessage: rawText.isEmpty ? 'no_streaming_transcript' : null,
-      ),
-    );
-    return retainedDraft;
+    // 流式模式的收尾已交由 stopQsoStreaming + structureCapturedTranscript 负责；
+    // 此处委托以消除重复实现与不可达分支。
+    return stopQsoStreaming(audioPath: audioPath, startedAt: startedAt);
   }
 
   QsoDraft _emptyDraft({DateTime? dateTime}) {
@@ -1017,4 +1298,9 @@ Future<void> _deleteOwnedAudioFileIfExists(String path) async {
 
 final modelOptionsProvider = FutureProvider<List<AiModelOption>>(
   (ref) => ref.watch(modelRepositoryProvider).listModels(),
+);
+
+final tokenUsageListProvider =
+    FutureProvider.autoDispose<List<TokenUsageRecord>>(
+  (ref) => ref.watch(tokenUsageRepositoryProvider).listRecords(),
 );

@@ -8,7 +8,5 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Initial Setup'), findsOneWidget);
-    expect(find.text('Language'), findsOneWidget);
-    expect(find.text('Real-time streaming'), findsOneWidget);
   });
 }

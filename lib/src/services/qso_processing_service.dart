@@ -1,14 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../data/model_assignment_repository.dart';
 import '../data/model_repository.dart';
 import '../data/provider_repository.dart';
+import '../data/token_usage_repository.dart';
 import '../domain/app_models.dart';
+import '../domain/provider_catalog.dart';
+import 'ai_provider_clients.dart';
 import 'heuristic_qso_structuring_service.dart';
-import 'wav_audio.dart';
 
 class QsoProcessingService {
   QsoProcessingService({
@@ -16,18 +17,26 @@ class QsoProcessingService {
     required ModelAssignmentRepository modelAssignmentRepository,
     required ModelRepository modelRepository,
     required HeuristicQsoStructuringService heuristicStructuringService,
+    required TokenUsageRepository tokenUsageRepository,
     http.Client? httpClient,
   }) : _providerRepository = providerRepository,
        _modelAssignmentRepository = modelAssignmentRepository,
        _modelRepository = modelRepository,
        _heuristicStructuringService = heuristicStructuringService,
-       _httpClient = httpClient ?? http.Client();
+       _tokenUsageRepository = tokenUsageRepository,
+       _httpClient = httpClient ?? http.Client() {
+    _asrClient = ProviderAsrClient(_httpClient);
+    _structuringClient = ProviderStructuringClient(_httpClient);
+  }
 
   final ProviderRepository _providerRepository;
   final ModelAssignmentRepository _modelAssignmentRepository;
   final ModelRepository _modelRepository;
   final HeuristicQsoStructuringService _heuristicStructuringService;
+  final TokenUsageRepository _tokenUsageRepository;
   final http.Client _httpClient;
+  late final ProviderAsrClient _asrClient;
+  late final ProviderStructuringClient _structuringClient;
 
   Future<QsoDraft> createDraftFromText(
     String rawText, {
@@ -85,44 +94,26 @@ class QsoProcessingService {
     if (model == null || !model.supports(ModelCapability.structuring)) {
       throw StateError('structuring_model_without_capability');
     }
-    if (!_supportsOpenAiCompatibleHttp(provider)) {
-      throw StateError('provider_not_openai_compatible_http');
-    }
+    final descriptor = descriptorFor(AiProvider.fromKey(provider.type));
+    final baseUrl = (provider.baseUrl != null && provider.baseUrl!.isNotEmpty)
+        ? provider.baseUrl!
+        : descriptor.defaultBaseUrl;
 
-    final baseUri = _baseUri(provider);
-    final response = await _httpClient.post(
-      baseUri.replace(path: _joinUriPath(baseUri.path, 'chat/completions')),
-      headers: {
-        'Content-Type': 'application/json',
-        if (provider.apiKey?.isNotEmpty ?? false)
-          'Authorization': 'Bearer ${provider.apiKey}',
-      },
-      body: jsonEncode({
-        'model': model.name,
-        'response_format': {'type': 'json_object'},
-        'messages': [
-          {'role': 'system', 'content': _structuringSystemPrompt},
-          {'role': 'user', 'content': rawText},
-        ],
-      }),
+    final result = await _structuringClient.structure(
+      descriptor: descriptor,
+      baseUrl: baseUrl,
+      apiKey: provider.apiKey,
+      modelName: model.name,
+      systemPrompt: _structuringSystemPrompt,
+      userText: rawText,
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('structuring_request_failed:${response.statusCode}');
-    }
-
-    final payload = jsonDecode(response.body) as Map<String, Object?>;
-    final choices = payload['choices'] as List<Object?>?;
-    if (choices == null || choices.isEmpty) {
-      throw StateError('structuring_response_missing_json');
-    }
-    final firstChoice = choices.first as Map<String, Object?>;
-    final message = firstChoice['message'] as Map<String, Object?>?;
-    final content = message?['content'] as String?;
-    if (content == null || content.trim().isEmpty) {
-      throw StateError('structuring_response_missing_json');
-    }
-
-    final structured = jsonDecode(content) as Map<String, Object?>;
+    await _recordUsage(
+      provider: descriptor.provider.name,
+      model: model.name,
+      taskType: 'structuring',
+      usage: result.usage,
+    );
+    final structured = jsonDecode(result.content) as Map<String, Object?>;
     return _draftFromStructuredJson(
       structured,
       rawText: rawText,
@@ -157,6 +148,7 @@ class QsoProcessingService {
       notes: _optionalFieldFromJson(json, 'notes'),
       rig: _optionalFieldFromJson(json, 'rig'),
       antenna: _optionalFieldFromJson(json, 'antenna'),
+      power: _optionalFieldFromJson(json, 'power'),
       audioPath: audioPath,
       rawTranscript: rawText,
     );
@@ -220,44 +212,45 @@ class QsoProcessingService {
     if (model == null || !model.supports(ModelCapability.speech)) {
       throw StateError('transcription_model_without_speech');
     }
-
-    if (!_supportsOpenAiCompatibleHttp(provider)) {
-      throw StateError('provider_not_openai_compatible_http');
+    final descriptor = descriptorFor(AiProvider.fromKey(provider.type));
+    if (!descriptor.supportsAsr) {
+      throw StateError('provider_without_asr:${descriptor.provider.name}');
     }
+    final baseUrl = (provider.baseUrl != null && provider.baseUrl!.isNotEmpty)
+        ? provider.baseUrl!
+        : descriptor.defaultBaseUrl;
 
-    final file = File(audioPath);
-    if (!file.existsSync()) {
-      throw StateError('audio_file_missing');
-    }
-
-    final uploadPath = await playableAudioPathFor(audioPath);
-    final baseUri = _baseUri(provider);
-    final request =
-        http.MultipartRequest(
-            'POST',
-            baseUri.replace(
-              path: _joinUriPath(baseUri.path, 'audio/transcriptions'),
-            ),
-          )
-          ..fields['model'] = model.name
-          ..files.add(await http.MultipartFile.fromPath('file', uploadPath));
-    final apiKey = provider.apiKey;
-    if (apiKey != null && apiKey.isNotEmpty) {
-      request.headers['Authorization'] = 'Bearer $apiKey';
-    }
-
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
+    final result = await _asrClient.transcribe(
+      descriptor: descriptor,
+      baseUrl: baseUrl,
+      apiKey: provider.apiKey,
+      modelName: model.name,
+      audioPath: audioPath,
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('transcription_request_failed:${response.statusCode}');
-    }
-    final payload = jsonDecode(response.body) as Map<String, Object?>;
-    final text = payload['text'] as String?;
-    if (text == null || text.trim().isEmpty) {
-      throw StateError('transcription_response_missing_text');
-    }
-    return text;
+    await _recordUsage(
+      provider: descriptor.provider.name,
+      model: model.name,
+      taskType: 'transcription',
+      usage: result.usage,
+    );
+    return result.text;
+  }
+
+  Future<void> _recordUsage({
+    required String provider,
+    required String model,
+    required String taskType,
+    required TokenUsage? usage,
+  }) async {
+    // Token 消耗记录是辅助功能，DB 写入失败不得中断已成功的转写/结构化主流程。
+    try {
+      await _tokenUsageRepository.insertRecord(
+        provider: provider,
+        model: model,
+        taskType: taskType,
+        usage: usage,
+      );
+    } catch (_) {}
   }
 
   Future<ModelAssignment?> _assignment(ModelAssignmentTask task) async {
@@ -280,39 +273,65 @@ class QsoProcessingService {
     return null;
   }
 
-  bool _supportsOpenAiCompatibleHttp(ProviderConnection provider) {
-    return const {
-      'OpenAI',
-      'OpenAI-compatible',
-      'Local endpoint',
-      'DeepSeek',
-      'Qwen',
-      'Zhipu',
-      'Gemini',
-    }.contains(provider.type);
-  }
-
-  Uri _baseUri(ProviderConnection provider) {
-    final baseUrl = provider.baseUrl == null || provider.baseUrl!.isEmpty
-        ? 'https://api.openai.com/v1'
-        : provider.baseUrl!;
-    return Uri.parse(baseUrl);
-  }
-
-  String _joinUriPath(String basePath, String suffix) {
-    final normalizedBase = basePath.endsWith('/')
-        ? basePath.substring(0, basePath.length - 1)
-        : basePath;
-    return '$normalizedBase/$suffix';
-  }
-
   static const _structuringSystemPrompt = '''
 Extract one amateur radio QSO log from the transcript.
-Return JSON only. Use these keys: callsign, dateTime, band, frequency, mode, sentRst, receivedRst, name, qth, notes, rig, antenna, confidence, sourceText.
+Return JSON only. Use these keys: callsign, dateTime, band, frequency, mode, sentRst, receivedRst, name, qth, notes, rig, antenna, power, confidence, sourceText.
 dateTime must be ISO 8601 when explicitly present; otherwise use null.
 confidence must be an object with numeric 0-1 confidence for each extracted field.
 Prefer the operator's latest correction when the transcript contains a spoken correction.
 Do not invent missing required fields. Keep missing fields as empty strings or null.
+
+## Amateur Radio Terminology Reference
+
+### Q-Codes (common in QSO context)
+- QTH = location/station address → extract to qth field
+- QSL = confirmation/acknowledgment
+- QSO = a contact/conversation between two stations
+- QRM = man-made interference
+- QRN = natural/static interference
+- QRP = low power operation (typically ≤5W)
+- QRO = high power operation
+- QRZ = "who is calling me?"
+- QRT = "stop transmitting" / going off air
+- QSY = change frequency
+- QSB = signal fading
+- QSA = signal strength (QSA1-5)
+- QRA = station name/callsign
+- QRG = exact frequency
+- QRH = frequency instability
+
+### Signal Reports (RST)
+- RST = Readability-Signal-Tone (e.g., "59", "599")
+- Readability: 1 (unreadable) to 5 (perfectly readable)
+- Signal: 1 (barely perceptible) to 9 (extremely strong)
+- Tone: 1 (very harsh) to 9 (perfectly pure) — CW/digital only
+- Common voice: "five nine" = 59, "five nine nine" = 599 (CW)
+- "5 by 9" or "five by nine" also means R=5 S=9
+
+### Phonetic Alphabet (NATO/ITU)
+Alpha=A, Bravo=B, Charlie=C, Delta=D, Echo=E, Foxtrot=F,
+Golf=G, Hotel=H, India=I, Juliet=J, Kilo=K, Lima=L,
+Mike=M, November=N, Oscar=O, Papa=P, Quebec=Q, Romeo=R,
+Sierra=S, Tango=T, Uniform=U, Victor=V, Whiskey=W,
+X-ray=X, Yankee=Y, Zulu=Z
+
+### Callsign Patterns
+- Format: prefix + digit(s) + suffix (e.g., BV2AAA, W1AW, JA1ABC)
+- Chinese callsigns: B, BV, VR, 3D, V8, etc. + digit + 1-3 letters
+- US callsigns: W, K, N, AA-AL, etc. + digit + 1-3 letters
+- When spelled phonetically, map back to letters (e.g., "Bravo Victor Two" → "BV2")
+
+### Common Phrases
+- "CQ CQ CQ" = general call seeking any station
+- "73" = best regards / goodbye
+- "88" = love and kisses
+- "59" / "599" = excellent signal report
+- "you are" / "your RST is" = signal report follows
+- "my QTH is" = my location is
+- "my name is" = operator's name
+- "how copy" = did you receive my transmission clearly
+- "over" = your turn to transmit
+- "roger" / "copy" = message received and understood
 ''';
 }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -15,7 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../domain/app_models.dart';
 import '../domain/filter_helpers.dart';
-import '../services/provider_model_fetch_service.dart';
+import '../domain/provider_catalog.dart';
 import '../services/release_info_service.dart';
 import '../state/app_state.dart';
 import 'band_colors.dart';
@@ -27,11 +28,142 @@ extension L10nX on BuildContext {
 
 enum _ExportFormat { adif, csv, rawTranscript }
 
-class FirstRunSetupScreen extends ConsumerWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
+  const WelcomeScreen({super.key});
+
+  @override
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fadeIn;
+  late final Animation<Offset> _slideUp;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+    _fadeIn = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slideUp = Tween<Offset>(
+      begin: const Offset(0, 0.15),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
+    _controller.forward();
+
+    // 3 秒后自动跳转
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        _navigateToMain();
+      }
+    });
+  }
+
+  void _navigateToMain() {
+    ref.read(welcomeShownProvider.notifier).markShown();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final callsign = ref.watch(callsignProvider);
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
+
+    return Scaffold(
+      body: GestureDetector(
+        onTap: _navigateToMain,
+        behavior: HitTestBehavior.opaque,
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeIn,
+            child: SlideTransition(
+              position: _slideUp,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.radio,
+                    size: 64,
+                    color: osc.phosphor,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    l10n.welcomeTitle,
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  if (callsign.isNotEmpty)
+                    Text(
+                      l10n.welcomeCallsign(callsign),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: osc.phosphor,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  Text(l10n.welcomeSubtitle),
+                  const SizedBox(height: 32),
+                  FilledButton.tonal(
+                    onPressed: _navigateToMain,
+                    child: Text(l10n.skipWelcome),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FirstRunSetupScreen extends ConsumerStatefulWidget {
   const FirstRunSetupScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FirstRunSetupScreen> createState() =>
+      _FirstRunSetupScreenState();
+}
+
+class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
+  final _callsignController = TextEditingController();
+  bool _languageAutoDetected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 根据系统语言自动设置默认语言
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoDetectLanguage();
+    });
+  }
+
+  void _autoDetectLanguage() {
+    if (_languageAutoDetected) return;
+    _languageAutoDetected = true;
+    final systemLocale = PlatformDispatcher.instance.locale;
+    if (systemLocale.languageCode == 'zh') {
+      ref.read(appSettingsProvider.notifier).setLocaleMode(AppLocaleMode.zh);
+    }
+  }
+
+  @override
+  void dispose() {
+    _callsignController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final localeMode = ref.watch(localeModeProvider);
     final transcriptionMode = ref.watch(transcriptionModeProvider);
     final failureHandling = ref.watch(failureHandlingProvider);
@@ -50,7 +182,20 @@ class FirstRunSetupScreen extends ConsumerWidget {
             const SizedBox(height: 8),
             Text(l10n.firstRunSubtitle),
             const SizedBox(height: 24),
-            _SectionTitle(number: 1, title: l10n.language),
+            _SectionTitle(number: 1, title: l10n.callsignSetup),
+            Text(l10n.callsignSetupDesc),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _callsignController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: l10n.yourCallsign,
+                hintText: l10n.yourCallsignHint,
+                prefixIcon: const Icon(Icons.badge),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _SectionTitle(number: 2, title: l10n.language),
             _ChoiceCard<AppLocaleMode>(
               value: AppLocaleMode.system,
               groupValue: localeMode,
@@ -79,7 +224,7 @@ class FirstRunSetupScreen extends ConsumerWidget {
                   ref.read(appSettingsProvider.notifier).setLocaleMode(value),
             ),
             const SizedBox(height: 24),
-            _SectionTitle(number: 2, title: l10n.transcriptionMode),
+            _SectionTitle(number: 3, title: l10n.transcriptionMode),
             _ChoiceCard<TranscriptionMode>(
               value: TranscriptionMode.streaming,
               groupValue: transcriptionMode,
@@ -101,7 +246,7 @@ class FirstRunSetupScreen extends ConsumerWidget {
                   .setTranscriptionMode(value),
             ),
             const SizedBox(height: 24),
-            _SectionTitle(number: 3, title: l10n.failureHandling),
+            _SectionTitle(number: 4, title: l10n.failureHandling),
             _ChoiceCard<FailureHandling>(
               value: FailureHandling.alert,
               groupValue: failureHandling,
@@ -124,8 +269,15 @@ class FirstRunSetupScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 32),
             FilledButton.icon(
-              onPressed: () =>
-                  ref.read(setupCompletedProvider.notifier).complete(),
+              onPressed: () async {
+                final callsign = _callsignController.text.trim();
+                if (callsign.isNotEmpty) {
+                  await ref
+                      .read(appSettingsProvider.notifier)
+                      .setCallsign(callsign);
+                }
+                await ref.read(setupCompletedProvider.notifier).complete();
+              },
               icon: const Icon(Icons.check_circle_outline),
               label: Text(l10n.completeSetup),
             ),
@@ -207,8 +359,6 @@ class _MainShellState extends ConsumerState<MainShell> {
     final pages = [
       const RecordScreen(),
       const LogsScreen(),
-      const ImportScreen(),
-      const ExportScreen(),
       const SettingsScreen(),
     ];
 
@@ -227,14 +377,6 @@ class _MainShellState extends ConsumerState<MainShell> {
             label: l10n.logs,
           ),
           NavigationDestination(
-            icon: const Icon(Icons.upload_file),
-            label: l10n.import,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.file_download),
-            label: l10n.export,
-          ),
-          NavigationDestination(
             icon: const Icon(Icons.settings),
             label: l10n.settings,
           ),
@@ -244,14 +386,59 @@ class _MainShellState extends ConsumerState<MainShell> {
   }
 }
 
-class RecordScreen extends ConsumerWidget {
+class RecordScreen extends ConsumerStatefulWidget {
   const RecordScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RecordScreen> createState() => _RecordScreenState();
+}
+
+class _RecordScreenState extends ConsumerState<RecordScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  late int _activeTabIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    final currentMode = ref.read(transcriptionModeProvider);
+    final initialIndex = currentMode == TranscriptionMode.streaming ? 1 : 0;
+    _activeTabIndex = initialIndex;
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
+    _tabController.addListener(_onTabChanged);
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    // 录音/处理中禁止切换转写模式：否则停止按钮会落到错误的 tab，
+    // 导致录音模式与停止处理不匹配（如 afterQso 录音被按流式停止）。
+    final session = ref.read(recordingSessionProvider);
+    if (session.isRecording || session.isProcessing) {
+      _tabController.index = _activeTabIndex;
+      return;
+    }
+    _activeTabIndex = _tabController.index;
+    final mode = _tabController.index == 0
+        ? TranscriptionMode.afterQso
+        : TranscriptionMode.streaming;
+    ref.read(appSettingsProvider.notifier).setTranscriptionMode(mode);
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final session = ref.watch(recordingSessionProvider);
-    final mode = ref.watch(transcriptionModeProvider);
     final capture = ref
         .watch(qsoCaptureProvider)
         .maybeWhen(
@@ -269,112 +456,255 @@ class RecordScreen extends ConsumerWidget {
             ),
           ),
         );
-    final draft = capture.currentDraft;
     final transcript = capture.transcriptSegments;
-    final logs = ref
-        .watch(qsoLogProvider)
-        .maybeWhen(data: (value) => value, orElse: () => const <QsoDraft>[]);
-    final isStreaming = mode == TranscriptionMode.streaming;
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.appTitle)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(
+        title: Text(l10n.appTitle),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: l10n.afterTranscribe),
+            Tab(text: l10n.realtimeTranscribe),
+            // 比赛模式暂时隐藏
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          _StatusPanel(
-            title: isStreaming ? l10n.streamingMode : l10n.afterQsoMode,
-            elapsed: session.elapsed,
-            active: session.isRecording,
+          // 后置转写
+          _AfterQsoTab(
+            session: session,
+            capture: capture,
           ),
-          if (session.errorMessage != null) ...[
-            const SizedBox(height: 8),
-            _PlaceholderCard(
-              title: l10n.failed,
-              text: _errorLabel(context, session.errorMessage!),
-              icon: Icons.error_outline,
-            ),
-          ],
-          if (capture.warningMessage != null) ...[
-            const SizedBox(height: 8),
-            _PlaceholderCard(
-              title: l10n.needsReview,
-              text: _captureWarningLabel(context, capture.warningMessage!),
-              icon: Icons.info_outline,
-            ),
-          ],
-          const SizedBox(height: 16),
-          if (isStreaming && transcript.isNotEmpty)
-            _TranscriptCard(segments: transcript)
-          else
-            _PlaceholderCard(
-              title: l10n.liveTranscript,
-              text: isStreaming
-                  ? l10n.noStreamingTranscript
-                  : l10n.recordingPlaceholder,
-              icon: Icons.audio_file,
-            ),
-          const SizedBox(height: 16),
-          _DraftCard(draft: draft),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: session.isProcessing
-                ? null
-                : () async {
-                    final recorder = ref.read(
-                      recordingSessionProvider.notifier,
-                    );
-                    if (session.isRecording) {
-                      final audioPath = await recorder.stop();
-                      final generatedDraft = await ref
-                          .read(qsoCaptureProvider.notifier)
-                          .finishQso(
-                            audioPath: audioPath,
-                            startedAt: session.startedAt,
-                            mode: mode,
-                            failureHandling: ref.read(failureHandlingProvider),
-                          );
-                      if (context.mounted) {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) =>
-                                QsoReviewScreen(draft: generatedDraft),
-                          ),
-                        );
-                      }
-                    } else {
-                      await recorder.start(mode);
-                      final updatedSession = ref.read(recordingSessionProvider);
-                      final startedAt = updatedSession.startedAt;
-                      if (updatedSession.isRecording && startedAt != null) {
-                        ref
-                            .read(qsoCaptureProvider.notifier)
-                            .startQso(mode: mode, startedAt: startedAt);
-                      }
-                    }
-                  },
-            icon: Icon(session.isRecording ? Icons.stop : Icons.mic),
-            label: Text(session.isRecording ? l10n.endQso : l10n.startQso),
+          // 实时转写
+          _StreamingTab(
+            session: session,
+            transcript: transcript,
+            capture: capture,
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () {
-              final qso = draft.copyWith(audioPath: session.audioPath);
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => QsoReviewScreen(draft: qso),
-                ),
-              );
-            },
-            icon: const Icon(Icons.edit_note),
-            label: Text(l10n.qsoReview),
-          ),
-          const SizedBox(height: 16),
-          _RecentSessionList(logs: logs.take(3).toList()),
         ],
       ),
     );
   }
 }
+
+class _AfterQsoTab extends ConsumerWidget {
+  const _AfterQsoTab({
+    required this.session,
+    required this.capture,
+  });
+
+  final RecordingSessionState session;
+  final QsoCaptureState capture;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        SizedBox(
+          height: 220,
+          child: _StatusPanel(
+            title: l10n.afterQsoMode,
+            elapsed: session.elapsed,
+            active: session.isRecording,
+          ),
+        ),
+        if (session.errorMessage != null) ...[
+          const SizedBox(height: 8),
+          _PlaceholderCard(
+            title: l10n.failed,
+            text: _errorLabel(context, session.errorMessage!),
+            icon: Icons.error_outline,
+          ),
+        ],
+        if (capture.warningMessage != null) ...[
+          const SizedBox(height: 8),
+          _PlaceholderCard(
+            title: l10n.needsReview,
+            text: _captureWarningLabel(context, capture.warningMessage!),
+            icon: Icons.info_outline,
+          ),
+        ],
+        const SizedBox(height: 24),
+        _RecordControls(
+          session: session,
+          mode: TranscriptionMode.afterQso,
+          onStopped: (audioPath) async {
+            final generatedDraft = await ref
+                .read(qsoCaptureProvider.notifier)
+                .finishQso(
+                  audioPath: audioPath,
+                  startedAt: session.startedAt,
+                  mode: TranscriptionMode.afterQso,
+                  failureHandling: ref.read(failureHandlingProvider),
+                );
+            if (context.mounted) {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => QsoReviewScreen(draft: generatedDraft),
+                ),
+              );
+            }
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _StreamingTab extends ConsumerWidget {
+  const _StreamingTab({
+    required this.session,
+    required this.transcript,
+    required this.capture,
+  });
+
+  final RecordingSessionState session;
+  final List<TranscriptSegment> transcript;
+  final QsoCaptureState capture;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final pending = capture.pendingStructuring && !session.isRecording;
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _StatusPanel(
+          title: l10n.streamingMode,
+          elapsed: session.elapsed,
+          active: session.isRecording,
+        ),
+        if (session.errorMessage != null) ...[
+          const SizedBox(height: 8),
+          _PlaceholderCard(
+            title: l10n.failed,
+            text: _errorLabel(context, session.errorMessage!),
+            icon: Icons.error_outline,
+          ),
+        ],
+        if (capture.warningMessage != null) ...[
+          const SizedBox(height: 8),
+          _PlaceholderCard(
+            title: l10n.needsReview,
+            text: _captureWarningLabel(context, capture.warningMessage!),
+            icon: Icons.info_outline,
+          ),
+        ],
+        const SizedBox(height: 16),
+        if (transcript.isNotEmpty)
+          _TranscriptCard(segments: transcript)
+        else
+          _PlaceholderCard(
+            title: l10n.liveTranscript,
+            text: l10n.noStreamingTranscript,
+            icon: Icons.audio_file,
+          ),
+        const SizedBox(height: 16),
+        if (pending) ...[
+          _PlaceholderCard(
+            title: l10n.streamingMode,
+            text: l10n.streamingStoppedHint,
+            icon: Icons.task_alt,
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () async {
+              final generatedDraft = await ref
+                  .read(qsoCaptureProvider.notifier)
+                  .structureCapturedTranscript();
+              if (context.mounted) {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => QsoReviewScreen(draft: generatedDraft),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.auto_fix_high),
+            label: Text(l10n.aiProcess),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final recorder = ref.read(recordingSessionProvider.notifier);
+              await recorder.start(TranscriptionMode.streaming);
+              final updatedSession = ref.read(recordingSessionProvider);
+              final startedAt = updatedSession.startedAt;
+              if (updatedSession.isRecording && startedAt != null) {
+                ref
+                    .read(qsoCaptureProvider.notifier)
+                    .startQso(
+                      mode: TranscriptionMode.streaming,
+                      startedAt: startedAt,
+                    );
+              }
+            },
+            icon: const Icon(Icons.refresh),
+            label: Text(l10n.discardAndRestart),
+          ),
+        ] else
+          _RecordControls(
+            session: session,
+            mode: TranscriptionMode.streaming,
+            onStopped: (audioPath) async {
+              await ref.read(qsoCaptureProvider.notifier).stopQsoStreaming(
+                    audioPath: audioPath,
+                    startedAt: session.startedAt,
+                  );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _RecordControls extends ConsumerWidget {
+  const _RecordControls({
+    required this.session,
+    required this.mode,
+    required this.onStopped,
+  });
+
+  final RecordingSessionState session;
+  final TranscriptionMode mode;
+
+  /// 停止录音后的回调（参数为录音文件路径）。
+  final Future<void> Function(String? audioPath) onStopped;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    return FilledButton.icon(
+      onPressed: session.isProcessing
+          ? null
+          : () async {
+              final recorder = ref.read(recordingSessionProvider.notifier);
+              if (session.isRecording) {
+                final audioPath = await recorder.stop();
+                await onStopped(audioPath);
+              } else {
+                await recorder.start(mode);
+                final updatedSession = ref.read(recordingSessionProvider);
+                final startedAt = updatedSession.startedAt;
+                if (updatedSession.isRecording && startedAt != null) {
+                  ref
+                      .read(qsoCaptureProvider.notifier)
+                      .startQso(mode: mode, startedAt: startedAt);
+                }
+              }
+            },
+      icon: Icon(session.isRecording ? Icons.stop : Icons.mic),
+      label: Text(session.isRecording ? l10n.endQso : l10n.startQso),
+    );
+  }
+}
+
+enum _FilterDimension { status, band, mode }
 
 class LogsScreen extends ConsumerStatefulWidget {
   const LogsScreen({super.key});
@@ -384,13 +714,14 @@ class LogsScreen extends ConsumerStatefulWidget {
 }
 
 class _LogsScreenState extends ConsumerState<LogsScreen> {
-  LogStatus? _status;
+  static const _pageSize = 20;
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
+  _FilterDimension _dimension = _FilterDimension.status;
+  LogStatus? _status;
   String? _band;
   String? _mode;
-  DateTime? _from;
-  DateTime? _to;
+  bool _dateDesc = true;
 
   @override
   void dispose() {
@@ -406,142 +737,271 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     });
   }
 
+  void _cycleDimension() {
+    setState(() {
+      _dimension = _FilterDimension
+          .values[(_dimension.index + 1) % _FilterDimension.values.length];
+    });
+  }
+
+  String _dimensionLabel(BuildContext context) {
+    final l10n = context.l10n;
+    return switch (_dimension) {
+      _FilterDimension.status => l10n.filterDimensionStatus,
+      _FilterDimension.band => l10n.filterDimensionBand,
+      _FilterDimension.mode => l10n.filterDimensionMode,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final logsState = ref.watch(qsoLogProvider);
 
     return Scaffold(
-      appBar: AppBar(title: Text(l10n.logs)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: l10n.searchLogs,
+      appBar: AppBar(
+        title: Text(l10n.logs),
+        actions: [
+          IconButton(
+            tooltip: l10n.import,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ImportScreen(),
+              ),
             ),
-            onChanged: _onSearchChanged,
+            icon: const Icon(Icons.file_download),
           ),
-          const SizedBox(height: 12),
-          _CardSection(
-            title: l10n.filters,
-            children: [
-              DropdownButtonFormField<LogStatus?>(
-                initialValue: _status,
-                decoration: InputDecoration(labelText: l10n.status),
-                hint: Text(l10n.all),
-                items: [
-                  DropdownMenuItem(value: null, child: Text(l10n.all)),
-                  for (final status in LogStatus.values)
-                    DropdownMenuItem(
-                      value: status,
-                      child: Text(_statusLabel(context, status)),
-                    ),
-                ],
-                onChanged: (value) => setState(() => _status = value),
+          IconButton(
+            tooltip: l10n.export,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ExportScreen(),
               ),
-              const SizedBox(height: 12),
-              _TwoColumnFields(
-                left: _BandDropdown(
-                  value: _band,
-                  includeAll: true,
-                  onChanged: (value) => setState(() => _band = value),
-                ),
-                right: _ModeDropdown(
-                  value: _mode,
-                  includeAll: true,
-                  onChanged: (value) => setState(() => _mode = value),
-                ),
-              ),
-              _TwoColumnFields(
-                left: _DatePickerField(
-                  label: l10n.fromDate,
-                  value: _from,
-                  onPick: (value) => setState(() => _from = value),
-                  onClear: _from == null
-                      ? null
-                      : () => setState(() => _from = null),
-                ),
-                right: _DatePickerField(
-                  label: l10n.toDate,
-                  value: _to,
-                  onPick: (value) => setState(() => _to = value),
-                  onClear: _to == null
-                      ? null
-                      : () => setState(() => _to = null),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: _clearFilters,
-                  icon: const Icon(Icons.filter_alt_off),
-                  label: Text(l10n.clearFilters),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ...logsState.when(
-            data: (logs) {
-              final filteredLogs = logs.where(_matchesLogFilter).toList();
-              return [
-                if (filteredLogs.isEmpty)
-                  _PlaceholderCard(
-                    title: l10n.logs,
-                    text: l10n.noLogsMatchFilters,
-                    icon: Icons.info_outline,
-                  ),
-                for (final log in filteredLogs) ...[
-                  _LogListItem(log: log),
-                  const SizedBox(height: 8),
-                ],
-              ];
-            },
-            error: (error, stackTrace) => [
-              _PlaceholderCard(
-                title: l10n.failed,
-                text: error.toString(),
-                icon: Icons.error_outline,
-              ),
-            ],
-            loading: () => const [Center(child: CircularProgressIndicator())],
+            ),
+            icon: const Icon(Icons.file_upload),
           ),
         ],
+      ),
+      body: logsState.when(
+        data: (allLogs) {
+          final filteredLogs = allLogs.where(_matchesLogFilter).toList();
+          filteredLogs.sort((a, b) {
+            final ta = a.dateTime.value;
+            final tb = b.dateTime.value;
+            if (ta == null && tb == null) return 0;
+            if (ta == null) return 1;
+            if (tb == null) return -1;
+            return _dateDesc ? tb.compareTo(ta) : ta.compareTo(tb);
+          });
+          final displayCount =
+              (filteredLogs.length < _pageSize)
+                  ? filteredLogs.length
+                  : _pageSize;
+          final hasMore = filteredLogs.length > _pageSize;
+          return RefreshIndicator(
+            onRefresh: () async {
+              ref.invalidate(qsoLogProvider);
+              await ref.read(qsoLogProvider.future);
+            },
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search),
+                            hintText: l10n.searchLogs,
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      _onSearchChanged('');
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onChanged: _onSearchChanged,
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ActionChip(
+                              avatar:
+                                  const Icon(Icons.filter_list, size: 18),
+                              label: Text(_dimensionLabel(context)),
+                              onPressed: _cycleDimension,
+                            ),
+                            const Spacer(),
+                            ActionChip(
+                              avatar: Icon(
+                                _dateDesc
+                                    ? Icons.arrow_downward
+                                    : Icons.arrow_upward,
+                                size: 18,
+                              ),
+                              label: Text(
+                                _dateDesc
+                                    ? l10n.sortNewestFirst
+                                    : l10n.sortOldestFirst,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _dateDesc = !_dateDesc),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 40,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: _buildDimensionChips(context, allLogs),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (filteredLogs.isEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverToBoxAdapter(
+                      child: _PlaceholderCard(
+                        title: l10n.logs,
+                        text: l10n.noLogsMatchFilters,
+                        icon: Icons.info_outline,
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    sliver: SliverList.separated(
+                      itemCount: displayCount + (hasMore ? 1 : 0),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        if (index >= filteredLogs.length) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Text(
+                                l10n.noMoreData,
+                                style: Theme.of(context).textTheme.labelMedium,
+                              ),
+                            ),
+                          );
+                        }
+                        return _LogListItem(log: filteredLogs[index]);
+                      },
+                    ),
+                  ),
+                const SliverPadding(
+                  padding: EdgeInsets.only(bottom: 16),
+                ),
+              ],
+            ),
+          );
+        },
+        error: (error, stackTrace) => Center(
+          child: _PlaceholderCard(
+            title: l10n.failed,
+            text: error.toString(),
+            icon: Icons.error_outline,
+          ),
+        ),
+        loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );
   }
 
   bool _matchesLogFilter(QsoDraft log) {
     final search = _searchController.text.trim().toUpperCase();
-    final dateTime = log.dateTime.value;
-    final to = _inclusiveDateEnd(_to);
 
     final matchesSearch =
         search.isEmpty ||
         log.callsign.value.toUpperCase().contains(search) ||
-        (log.qth?.value.toUpperCase().contains(search) ?? false) ||
-        (log.notes?.value.toUpperCase().contains(search) ?? false);
+        (log.notes?.value.toUpperCase().contains(search) ?? false) ||
+        (log.rawTranscript?.toUpperCase().contains(search) ?? false) ||
+        (log.qth?.value.toUpperCase().contains(search) ?? false);
 
     return matchesSearch &&
         (_status == null || log.status == _status) &&
-        (_band == null || matchesFilterText(log.band.value, _band)) &&
-        (_mode == null || matchesFilterText(log.mode.value, _mode)) &&
-        (_from == null || (dateTime != null && !dateTime.isBefore(_from!))) &&
-        (to == null || (dateTime != null && !dateTime.isAfter(to)));
+        (_band == null ||
+            _band!.toLowerCase() == log.band.value.trim().toLowerCase()) &&
+        (_mode == null ||
+            _mode!.toLowerCase() == log.mode.value.trim().toLowerCase());
   }
 
-  void _clearFilters() {
-    setState(() {
-      _status = null;
-      _searchController.clear();
-      _band = null;
-      _mode = null;
-      _from = null;
-      _to = null;
-    });
+  List<Widget> _buildDimensionChips(
+    BuildContext context,
+    List<QsoDraft> allLogs,
+  ) {
+    final l10n = context.l10n;
+    switch (_dimension) {
+      case _FilterDimension.status:
+        return [
+          _optionChip(context, l10n.all, _status == null, () {
+            setState(() => _status = null);
+          }),
+          for (final s in LogStatus.values)
+            _optionChip(context, _statusLabel(context, s), _status == s, () {
+              setState(() => _status = s);
+            }),
+        ];
+      case _FilterDimension.band:
+        final bands = allLogs
+            .map((l) => l.band.value.trim())
+            .where((b) => b.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+        return [
+          _optionChip(context, l10n.all, _band == null, () {
+            setState(() => _band = null);
+          }),
+          for (final b in bands)
+            _optionChip(context, b, _band == b, () {
+              setState(() => _band = b);
+            }),
+        ];
+      case _FilterDimension.mode:
+        final modes = allLogs
+            .map((l) => l.mode.value.trim())
+            .where((m) => m.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+        return [
+          _optionChip(context, l10n.all, _mode == null, () {
+            setState(() => _mode = null);
+          }),
+          for (final m in modes)
+            _optionChip(context, m, _mode == m, () {
+              setState(() => _mode = m);
+            }),
+        ];
+    }
+  }
+
+  Widget _optionChip(
+    BuildContext context,
+    String label,
+    bool selected,
+    VoidCallback onSelected,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onSelected(),
+      ),
+    );
   }
 }
 
@@ -564,10 +1024,15 @@ class ImportScreen extends ConsumerWidget {
             onTap: () async {
               final result = await FilePicker.platform.pickFiles(
                 type: FileType.custom,
-                allowedExtensions: ['wav', 'm4a', 'mp3', 'pcm'],
+                allowedExtensions: ['wav', 'm4a', 'mp3', 'pcm', 'flac', 'ogg', 'opus', 'aac', 'amr', 'webm'],
               );
               final path = result?.files.single.path;
               if (path == null) {
+                return;
+              }
+              // 校验音频格式是否与当前 ASR 模型兼容
+              final formatOk = await _validateImportFormat(context, ref, path);
+              if (!formatOk || !context.mounted) {
                 return;
               }
               try {
@@ -575,20 +1040,24 @@ class ImportScreen extends ConsumerWidget {
                     .read(importJobsProvider.notifier)
                     .prepareAudioImport(path);
                 if (context.mounted) {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => QsoReviewScreen(
-                        draft: importDraft.draft,
-                        importJobId: importDraft.jobId,
+                  if (importDraft.draft.status == LogStatus.failed) {
+                    // 识别失败：显示错误信息，不跳转到表单
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(l10n.audioImportManualReview),
+                        backgroundColor: Theme.of(context).colorScheme.error,
                       ),
-                    ),
-                  );
-                }
-                if (context.mounted &&
-                    importDraft.draft.status == LogStatus.failed) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(l10n.audioImportManualReview)),
-                  );
+                    );
+                  } else {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => QsoReviewScreen(
+                          draft: importDraft.draft,
+                          importJobId: importDraft.jobId,
+                        ),
+                      ),
+                    );
+                  }
                 }
               } catch (error) {
                 if (context.mounted) {
@@ -597,6 +1066,7 @@ class ImportScreen extends ConsumerWidget {
                       content: Text(
                         '${l10n.failed}: ${_errorLabel(context, '$error')}',
                       ),
+                      backgroundColor: Theme.of(context).colorScheme.error,
                     ),
                   );
                 }
@@ -955,173 +1425,144 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final localeMode = ref.watch(localeModeProvider);
-    final transcriptionMode = ref.watch(transcriptionModeProvider);
-    final failureHandling = ref.watch(failureHandlingProvider);
-    final audioRetention = ref.watch(audioRetentionPolicyProvider);
-    final checkUpdatesOnStartup = ref.watch(checkUpdatesOnStartupProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _ChoiceCard<AppLocaleMode>(
-            value: AppLocaleMode.system,
-            groupValue: localeMode,
-            title: l10n.followSystem,
-            subtitle: l10n.followSystemDesc,
-            icon: Icons.language,
-            onSelected: (value) =>
-                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
-          ),
-          _ChoiceCard<AppLocaleMode>(
-            value: AppLocaleMode.zh,
-            groupValue: localeMode,
-            title: l10n.simplifiedChinese,
-            subtitle: l10n.simplifiedChineseDesc,
-            icon: Icons.translate,
-            onSelected: (value) =>
-                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
-          ),
-          _ChoiceCard<AppLocaleMode>(
-            value: AppLocaleMode.en,
-            groupValue: localeMode,
-            title: l10n.english,
-            subtitle: l10n.englishDesc,
-            icon: Icons.translate,
-            onSelected: (value) =>
-                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
-          ),
-          const SizedBox(height: 16),
-          _ChoiceCard<TranscriptionMode>(
-            value: TranscriptionMode.streaming,
-            groupValue: transcriptionMode,
-            title: l10n.streamingMode,
-            subtitle: l10n.streamingModeDesc,
-            icon: Icons.mic,
-            onSelected: (value) => ref
-                .read(appSettingsProvider.notifier)
-                .setTranscriptionMode(value),
-          ),
-          _ChoiceCard<TranscriptionMode>(
-            value: TranscriptionMode.afterQso,
-            groupValue: transcriptionMode,
-            title: l10n.afterQsoMode,
-            subtitle: l10n.afterQsoModeDesc,
-            icon: Icons.upload_file,
-            onSelected: (value) => ref
-                .read(appSettingsProvider.notifier)
-                .setTranscriptionMode(value),
-          ),
-          const SizedBox(height: 16),
-          _ChoiceCard<FailureHandling>(
-            value: FailureHandling.alert,
-            groupValue: failureHandling,
-            title: l10n.showErrors,
-            subtitle: l10n.showErrorsDesc,
-            icon: Icons.warning_amber,
-            onSelected: (value) => ref
-                .read(appSettingsProvider.notifier)
-                .setFailureHandling(value),
-          ),
-          _ChoiceCard<FailureHandling>(
-            value: FailureHandling.silent,
-            groupValue: failureHandling,
-            title: l10n.degradeSilently,
-            subtitle: l10n.degradeSilentlyDesc,
-            icon: Icons.visibility_off,
-            onSelected: (value) => ref
-                .read(appSettingsProvider.notifier)
-                .setFailureHandling(value),
-          ),
-          const SizedBox(height: 16),
           _CardSection(
-            title: l10n.audioRetention,
+            title: l10n.stationSettings,
             children: [
-              DropdownButtonFormField<AudioRetentionPolicy>(
-                initialValue: audioRetention,
-                decoration: InputDecoration(labelText: l10n.audioRetention),
-                items: [
-                  DropdownMenuItem(
-                    value: AudioRetentionPolicy.keep,
-                    child: Text(l10n.keepAudio),
+              _SettingsTile(
+                icon: Icons.badge,
+                title: l10n.callsignSetup,
+                subtitle: l10n.callsignSetupDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CallsignSettingsScreen(),
                   ),
-                  DropdownMenuItem(
-                    value: AudioRetentionPolicy.deleteAfterRecognition,
-                    child: Text(l10n.deleteAudioAfterRecognition),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.radio,
+                title: l10n.stationEquipment,
+                subtitle: l10n.stationEquipmentDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const StationEquipmentScreen(),
                   ),
-                  DropdownMenuItem(
-                    value: AudioRetentionPolicy.deleteAfterConfirmation,
-                    child: Text(l10n.deleteAudioAfterConfirmation),
-                  ),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    ref
-                        .read(appSettingsProvider.notifier)
-                        .setAudioRetentionPolicy(value);
-                  }
-                },
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsTile(
-            icon: Icons.hub,
-            title: l10n.providerManagement,
-            subtitle: l10n.providerManagementDesc,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ProviderSetupScreen(),
-              ),
-            ),
-          ),
-          _SettingsTile(
-            icon: Icons.model_training,
-            title: l10n.modelAssignment,
-            subtitle: l10n.modelAssignmentDesc,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const ModelAssignmentScreen(),
-              ),
-            ),
-          ),
-          _SettingsTile(
-            icon: Icons.storage,
-            title: l10n.localDataManagement,
-            subtitle: l10n.localDataManagementDesc,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const LocalDataManagementScreen(),
-              ),
-            ),
-          ),
           _CardSection(
-            title: l10n.updatePreferences,
+            title: l10n.aiModels,
             children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                secondary: const Icon(Icons.update),
-                title: Text(l10n.checkUpdatesOnStartup),
-                subtitle: Text(l10n.checkUpdatesOnStartupDesc),
-                value: checkUpdatesOnStartup,
-                onChanged: (value) => ref
-                    .read(appSettingsProvider.notifier)
-                    .setCheckUpdatesOnStartup(value),
+              _SettingsTile(
+                icon: Icons.hub,
+                title: l10n.providerManagement,
+                subtitle: l10n.providerManagementDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ProviderSetupScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.model_training,
+                title: l10n.modelAssignment,
+                subtitle: l10n.modelAssignmentDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ModelAssignmentScreen(),
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          _SettingsTile(
-            icon: Icons.system_update,
-            title: l10n.softwareUpdate,
-            subtitle: l10n.softwareUpdateDesc,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const SoftwareUpdateScreen(),
+          const SizedBox(height: 16),
+          _CardSection(
+            title: l10n.appSettings,
+            children: [
+              _SettingsTile(
+                icon: Icons.language,
+                title: l10n.language,
+                subtitle: l10n.followSystemDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LanguageSettingsScreen(),
+                  ),
+                ),
               ),
-            ),
+              _SettingsTile(
+                icon: Icons.warning_amber,
+                title: l10n.failureHandling,
+                subtitle: l10n.showErrorsDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TranscriptionSettingsScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.audio_file,
+                title: l10n.audioRetention,
+                subtitle: l10n.audioRetentionDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AudioRetentionSettingsScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.storage,
+                title: l10n.localDataManagement,
+                subtitle: l10n.localDataManagementDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LocalDataManagementScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.system_update,
+                title: l10n.softwareUpdate,
+                subtitle: l10n.softwareUpdateDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const SoftwareUpdateScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
+                icon: Icons.bolt,
+                title: l10n.tokenUsage,
+                subtitle: l10n.tokenUsageDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TokenUsageScreen(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _CardSection(
+            title: l10n.about,
+            children: [
+              _SettingsTile(
+                icon: Icons.info_outline,
+                title: l10n.about,
+                subtitle: l10n.aboutDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AboutScreen(),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1188,6 +1629,7 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
     final l10n = context.l10n;
     final updateState = ref.watch(appUpdateProvider);
     final release = updateState.release;
+    final checkUpdatesOnStartup = ref.watch(checkUpdatesOnStartupProvider);
     return Scaffold(
       appBar: AppBar(title: Text(l10n.softwareUpdate)),
       body: ListView(
@@ -1207,6 +1649,17 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
                   )
                 : const Icon(Icons.refresh),
             label: Text(l10n.checkUpdate),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.update),
+            title: Text(l10n.checkUpdatesOnStartup),
+            subtitle: Text(l10n.checkUpdatesOnStartupDesc),
+            value: checkUpdatesOnStartup,
+            onChanged: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setCheckUpdatesOnStartup(value),
           ),
           const SizedBox(height: 24),
           ..._resultWidgets(context, updateState),
@@ -1564,6 +2017,792 @@ class LocalDataManagementScreen extends ConsumerWidget {
   }
 }
 
+class StationEquipmentScreen extends ConsumerStatefulWidget {
+  const StationEquipmentScreen({super.key});
+
+  @override
+  ConsumerState<StationEquipmentScreen> createState() =>
+      _StationEquipmentScreenState();
+}
+
+class _StationEquipmentScreenState
+    extends ConsumerState<StationEquipmentScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final equipmentState = ref.watch(stationEquipmentProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.stationEquipment)),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showEquipmentDialog(),
+        icon: const Icon(Icons.add),
+        label: Text(l10n.addEquipment),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(l10n.stationEquipmentDesc),
+          const SizedBox(height: 16),
+          ...equipmentState.when(
+            data: (equipment) => [
+              if (equipment.isEmpty)
+                _PlaceholderCard(
+                  title: l10n.stationEquipment,
+                  text: l10n.noEquipmentSaved,
+                  icon: Icons.radio,
+                ),
+              for (int i = 0; i < equipment.length; i++) ...[
+                _EquipmentTile(
+                  equipment: equipment[i],
+                  onEdit: () => _showEquipmentDialog(
+                    index: i,
+                    equipment: equipment[i],
+                  ),
+                  onDelete: () => _deleteEquipment(i),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ],
+            error: (error, stackTrace) => [
+              _PlaceholderCard(
+                title: l10n.failed,
+                text: error.toString(),
+                icon: Icons.error_outline,
+              ),
+            ],
+            loading: () => const [Center(child: CircularProgressIndicator())],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showEquipmentDialog({
+    int? index,
+    StationEquipment? equipment,
+  }) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => EquipmentFormScreen(equipment: equipment),
+      ),
+    );
+    if (saved == true) {
+      ref.invalidate(stationEquipmentProvider);
+      if (mounted) {
+        showTopNotice(context, context.l10n.equipmentSaved);
+      }
+    }
+  }
+
+  Future<void> _deleteEquipment(int index) async {
+    final confirmed = await _confirmDestructiveAction(
+      context,
+      title: context.l10n.delete,
+      message: context.l10n.stationEquipment,
+    );
+    if (!confirmed) return;
+    final current = ref
+        .read(stationEquipmentProvider)
+        .maybeWhen(data: (v) => v, orElse: () => <StationEquipment>[]);
+    final updated = [...current]..removeAt(index);
+    await ref.read(stationEquipmentProvider.notifier).save(updated);
+  }
+}
+
+class EquipmentFormScreen extends ConsumerStatefulWidget {
+  const EquipmentFormScreen({super.key, this.equipment});
+
+  final StationEquipment? equipment;
+
+  @override
+  ConsumerState<EquipmentFormScreen> createState() =>
+      _EquipmentFormScreenState();
+}
+
+class _EquipmentFormScreenState extends ConsumerState<EquipmentFormScreen> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _antennaController;
+  late final TextEditingController _powerController;
+
+  @override
+  void initState() {
+    super.initState();
+    final eq = widget.equipment;
+    _nameController = TextEditingController(text: eq?.name ?? '');
+    _antennaController = TextEditingController(text: eq?.antenna ?? '');
+    _powerController = TextEditingController(
+      text: eq?.powerOptions.join('\n') ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _antennaController.dispose();
+    _powerController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isEdit = widget.equipment != null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isEdit ? l10n.editProvider : l10n.addEquipment),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: _nameController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: l10n.equipmentName,
+                    hintText: l10n.equipmentNameHint,
+                    prefixIcon: const Icon(Icons.radio),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _antennaController,
+                  decoration: InputDecoration(
+                    labelText: l10n.antennaName,
+                    hintText: l10n.antennaNameHint,
+                    prefixIcon: const Icon(Icons.cell_tower),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _powerController,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: l10n.powerOptions,
+                    hintText: l10n.powerOptionsHint,
+                    prefixIcon: const Icon(Icons.electrical_services),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _save,
+                    icon: const Icon(Icons.save),
+                    label: Text(l10n.confirmAndSave),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.equipmentName)),
+      );
+      return;
+    }
+    final powerLines = _powerController.text
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    final equipment = StationEquipment(
+      name: name,
+      antenna: _antennaController.text.trim(),
+      powerOptions: powerLines,
+    );
+
+    final current = ref
+        .read(stationEquipmentProvider)
+        .maybeWhen(data: (v) => v, orElse: () => <StationEquipment>[]);
+    final List<StationEquipment> updated;
+    final existingIndex = current.indexWhere((e) => e.name == name);
+    if (existingIndex >= 0) {
+      updated = [...current]..[existingIndex] = equipment;
+    } else {
+      updated = [...current, equipment];
+    }
+    await ref.read(stationEquipmentProvider.notifier).save(updated);
+    if (mounted) {
+      Navigator.of(context).pop(true);
+    }
+  }
+}
+
+class _EquipmentTile extends StatelessWidget {
+  const _EquipmentTile({
+    required this.equipment,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final StationEquipment equipment;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final powerText = equipment.powerOptions.isEmpty
+        ? '-'
+        : equipment.powerOptions.join(', ');
+    return ListTile(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(6),
+        side: BorderSide(
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+      leading: const Icon(Icons.radio),
+      title: Text(equipment.name),
+      subtitle: Text(
+        [
+          '${l10n.antennaName}: ${equipment.antenna.isEmpty ? "-" : equipment.antenna}',
+          '${l10n.powerOptions}: $powerText',
+        ].join('\n'),
+      ),
+      isThreeLine: true,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: l10n.editProvider,
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
+            tooltip: l10n.delete,
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class CallsignSettingsScreen extends ConsumerStatefulWidget {
+  const CallsignSettingsScreen({super.key});
+
+  @override
+  ConsumerState<CallsignSettingsScreen> createState() =>
+      _CallsignSettingsScreenState();
+}
+
+class _CallsignSettingsScreenState extends ConsumerState<CallsignSettingsScreen> {
+  late final TextEditingController _callsignController;
+  late final TextEditingController _qthController;
+
+  @override
+  void initState() {
+    super.initState();
+    _callsignController = TextEditingController(text: ref.read(callsignProvider));
+    _qthController = TextEditingController(text: ref.read(qthProvider));
+  }
+
+  @override
+  void dispose() {
+    _callsignController.dispose();
+    _qthController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.callsignSetup)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(l10n.callsignSetupDesc),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _callsignController,
+            textCapitalization: TextCapitalization.characters,
+            decoration: InputDecoration(
+              labelText: l10n.yourCallsign,
+              hintText: l10n.yourCallsignHint,
+              prefixIcon: const Icon(Icons.badge),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _qthController,
+            decoration: InputDecoration(
+              labelText: l10n.yourQth,
+              hintText: l10n.yourQthHint,
+              prefixIcon: const Icon(Icons.location_on_outlined),
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _save,
+            icon: const Icon(Icons.save),
+            label: Text(l10n.save),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _save() {
+    ref
+        .read(appSettingsProvider.notifier)
+        .setCallsign(_callsignController.text.trim());
+    ref
+        .read(appSettingsProvider.notifier)
+        .setQth(_qthController.text.trim());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(context.l10n.equipmentSaved)),
+    );
+  }
+}
+
+class LanguageSettingsScreen extends ConsumerWidget {
+  const LanguageSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final localeMode = ref.watch(localeModeProvider);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.language)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.system,
+            groupValue: localeMode,
+            title: l10n.followSystem,
+            subtitle: l10n.followSystemDesc,
+            icon: Icons.language,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
+          ),
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.zh,
+            groupValue: localeMode,
+            title: l10n.simplifiedChinese,
+            subtitle: l10n.simplifiedChineseDesc,
+            icon: Icons.translate,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
+          ),
+          _ChoiceCard<AppLocaleMode>(
+            value: AppLocaleMode.en,
+            groupValue: localeMode,
+            title: l10n.english,
+            subtitle: l10n.englishDesc,
+            icon: Icons.translate,
+            onSelected: (value) =>
+                ref.read(appSettingsProvider.notifier).setLocaleMode(value),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TranscriptionSettingsScreen extends ConsumerWidget {
+  const TranscriptionSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final failureHandling = ref.watch(failureHandlingProvider);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.failureHandling)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _ChoiceCard<FailureHandling>(
+            value: FailureHandling.alert,
+            groupValue: failureHandling,
+            title: l10n.showErrors,
+            subtitle: l10n.showErrorsDesc,
+            icon: Icons.warning_amber,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setFailureHandling(value),
+          ),
+          _ChoiceCard<FailureHandling>(
+            value: FailureHandling.silent,
+            groupValue: failureHandling,
+            title: l10n.degradeSilently,
+            subtitle: l10n.degradeSilentlyDesc,
+            icon: Icons.visibility_off,
+            onSelected: (value) => ref
+                .read(appSettingsProvider.notifier)
+                .setFailureHandling(value),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AudioRetentionSettingsScreen extends ConsumerWidget {
+  const AudioRetentionSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final audioRetention = ref.watch(audioRetentionPolicyProvider);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.audioRetention)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          DropdownButtonFormField<AudioRetentionPolicy>(
+            initialValue: audioRetention,
+            decoration: InputDecoration(labelText: l10n.audioRetention),
+            items: [
+              DropdownMenuItem(
+                value: AudioRetentionPolicy.keep,
+                child: Text(l10n.keepAudio),
+              ),
+              DropdownMenuItem(
+                value: AudioRetentionPolicy.deleteAfterRecognition,
+                child: Text(l10n.deleteAudioAfterRecognition),
+              ),
+              DropdownMenuItem(
+                value: AudioRetentionPolicy.deleteAfterConfirmation,
+                child: Text(l10n.deleteAudioAfterConfirmation),
+              ),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                ref
+                    .read(appSettingsProvider.notifier)
+                    .setAudioRetentionPolicy(value);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class TokenUsageScreen extends ConsumerWidget {
+  const TokenUsageScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final usageState = ref.watch(tokenUsageListProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(l10n.tokenUsage),
+        actions: [
+          IconButton(
+            tooltip: l10n.clearRecords,
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: () => _clearAll(context, ref),
+          ),
+        ],
+      ),
+      body: usageState.when(
+        data: (records) {
+          final totalTokens = records.fold<int>(
+            0,
+            (sum, r) => sum + (r.totalTokens ?? 0),
+          );
+          if (records.isEmpty) {
+            return Center(child: Text(l10n.noTokenRecords));
+          }
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      _UsageStat(
+                        label: l10n.totalTokens,
+                        value: totalTokens.toString(),
+                        icon: Icons.bolt,
+                      ),
+                      const SizedBox(width: 16),
+                      _UsageStat(
+                        label: l10n.requestCount,
+                        value: records.length.toString(),
+                        icon: Icons.request_quote,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                sliver: SliverList.separated(
+                  itemCount: records.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) =>
+                      _TokenUsageItem(record: records[index]),
+                ),
+              ),
+            ],
+          );
+        },
+        error: (error, stack) => Center(child: Text('$error')),
+        loading: () => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+  }
+
+  Future<void> _clearAll(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirmDestructiveAction(
+      context,
+      title: context.l10n.clearRecords,
+      message: context.l10n.clearRecordsConfirm,
+    );
+    if (!confirmed) return;
+    await ref.read(tokenUsageRepositoryProvider).clearAll();
+    ref.invalidate(tokenUsageListProvider);
+  }
+}
+
+class _UsageStat extends StatelessWidget {
+  const _UsageStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
+    return Expanded(
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 18, color: osc.phosphor),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(value, style: Theme.of(context).textTheme.headlineSmall),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TokenUsageItem extends StatelessWidget {
+  const _TokenUsageItem({required this.record});
+
+  final TokenUsageRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final taskLabel = switch (record.taskType) {
+      'transcription' => l10n.taskTranscription,
+      'structuring' => l10n.taskStructuring,
+      'streaming' => l10n.taskStreaming,
+      _ => record.taskType,
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${record.provider} · ${record.model}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  taskLabel,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _formatLocalDateTime(record.createdAt),
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              children: [
+                _tokenPair(
+                  context,
+                  l10n.promptTokens,
+                  record.promptTokens?.toString(),
+                ),
+                _tokenPair(
+                  context,
+                  l10n.completionTokens,
+                  record.completionTokens?.toString(),
+                ),
+                _tokenPair(
+                  context,
+                  l10n.totalTokens,
+                  record.totalTokens?.toString(),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Widget _tokenPair(BuildContext context, String label, String? value) {
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        '$label: ',
+        style: TextStyle(
+          fontSize: 12,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+      Text(
+        value ?? '—',
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+      ),
+    ],
+  );
+}
+
+class AboutScreen extends ConsumerStatefulWidget {
+  const AboutScreen({super.key});
+
+  @override
+  ConsumerState<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends ConsumerState<AboutScreen> {
+  PackageInfo? _packageInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPackageInfo();
+  }
+
+  Future<void> _loadPackageInfo() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _packageInfo = info);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
+    final version = _packageInfo == null
+        ? '-'
+        : packageVersionWithBuild(_packageInfo!.version, _packageInfo!.buildNumber);
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.about)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Center(
+            child: Column(
+              children: [
+                Icon(Icons.radio, size: 48, color: osc.phosphor),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.appTitle,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.aboutAppVersion(version),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(l10n.appDescription),
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          ExpansionTile(
+            leading: const Icon(Icons.privacy_tip_outlined),
+            title: Text(l10n.privacyPolicy),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(l10n.privacyPolicyBody),
+              ),
+            ],
+          ),
+          ExpansionTile(
+            leading: const Icon(Icons.code),
+            title: Text(l10n.openSourceCredits),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(l10n.openSourceCreditsBody),
+              ),
+            ],
+          ),
+          ExpansionTile(
+            leading: const Icon(Icons.link),
+            title: Text(l10n.relatedLinks),
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(l10n.relatedLinksBody),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProviderSetupScreen extends ConsumerStatefulWidget {
   const ProviderSetupScreen({super.key});
 
@@ -1683,9 +2922,7 @@ class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
       ref.invalidate(providerProfilesProvider);
       ref.invalidate(modelOptionsProvider);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(context.l10n.providerSaved)));
+        showTopNotice(context, context.l10n.providerSaved);
       }
     }
   }
@@ -1703,11 +2940,11 @@ class ProviderFormScreen extends ConsumerStatefulWidget {
 class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
   final _nameController = TextEditingController();
   final _baseUrlController = TextEditingController(
-    text: 'https://api.openai.com/v1',
+    text: descriptorFor(AiProvider.openai).defaultBaseUrl,
   );
   final _apiKeyController = TextEditingController();
   final _manualModelController = TextEditingController();
-  String _providerType = 'OpenAI';
+  AiProvider _providerKey = AiProvider.openai;
   bool _busy = false;
   bool _loadingInitial = false;
   List<FetchedProviderModel> _models = const [];
@@ -1721,13 +2958,14 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
     super.initState();
     final provider = widget.provider;
     if (provider == null) {
+      _models = _presetModelsFor(descriptorFor(_providerKey));
       return;
     }
     _loadingInitial = true;
-    _providerType = provider.type;
+    _providerKey = AiProvider.fromKey(provider.type);
     _nameController.text = provider.name;
-    _baseUrlController.text =
-        provider.baseUrl ?? _defaultBaseUrlForType(provider.type) ?? '';
+    _baseUrlController.text = provider.baseUrl ??
+        descriptorFor(_providerKey).defaultBaseUrl;
     Future.microtask(_loadExistingProvider);
   }
 
@@ -1762,18 +3000,21 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                   const LinearProgressIndicator(),
                   const SizedBox(height: 12),
                 ],
-                DropdownButtonFormField<String>(
-                  initialValue: _providerType,
+                DropdownButtonFormField<AiProvider>(
+                  initialValue: _providerKey,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: l10n.providerType,
                     helperText: l10n.providerTypeHint,
                   ),
                   items: [
-                    for (final type in _providerTypes)
+                    for (final descriptor in selectableProviders)
                       DropdownMenuItem(
-                        value: type,
-                        child: Text(type, overflow: TextOverflow.ellipsis),
+                        value: descriptor.provider,
+                        child: Text(
+                          descriptor.displayName,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                   ],
                   onChanged: disabled
@@ -1783,37 +3024,16 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                             return;
                           }
                           setState(() {
-                            _providerType = value;
-                            final defaultBaseUrl = _defaultBaseUrlForType(
-                              value,
-                            );
-                            if (defaultBaseUrl != null) {
-                              _baseUrlController.text = defaultBaseUrl;
+                            _providerKey = value;
+                            final descriptor = descriptorFor(value);
+                            _baseUrlController.text = descriptor.defaultBaseUrl;
+                            _models = _presetModelsFor(descriptor);
+                            if (_nameController.text.trim().isEmpty) {
+                              _nameController.text = descriptor.displayName;
                             }
                           });
                         },
                 ),
-                if (widget.provider == null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    l10n.providerTemplate,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _templateChip('OpenAI', () => applyTemplate('OpenAI')),
-                      _templateChip(
-                        'DeepSeek',
-                        () => applyTemplate('DeepSeek'),
-                      ),
-                      _templateChip('Zhipu', () => applyTemplate('Zhipu')),
-                      _templateChip('Qwen', () => applyTemplate('Qwen')),
-                    ],
-                  ),
-                ],
                 const SizedBox(height: 12),
                 TextField(
                   controller: _nameController,
@@ -1841,24 +3061,21 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                   decoration: InputDecoration(
                     labelText: l10n.apiKey,
                     helperText: l10n.apiKeyHint,
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.content_paste),
+                      tooltip: l10n.paste,
+                      onPressed: disabled ? null : _pasteApiKey,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: disabled ? null : _testConnection,
-                      icon: const Icon(Icons.network_check),
-                      label: Text(l10n.testConnection),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: disabled ? null : _fetchModels,
-                      icon: const Icon(Icons.cloud_download),
-                      label: Text(l10n.fetchModels),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: disabled ? null : _testConnection,
+                    icon: const Icon(Icons.network_check),
+                    label: Text(l10n.testConnection),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -1981,16 +3198,22 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
         return;
       }
       setState(() {
+        final descriptor = descriptorFor(
+          connection != null
+              ? AiProvider.fromKey(connection.type)
+              : _providerKey,
+        );
         if (connection != null) {
+          _providerKey = AiProvider.fromKey(connection.type);
           _nameController.text = connection.name;
-          _providerType = connection.type;
           _baseUrlController.text =
-              connection.baseUrl ??
-              _defaultBaseUrlForType(connection.type) ??
-              '';
+              (connection.baseUrl != null && connection.baseUrl!.isNotEmpty)
+              ? connection.baseUrl!
+              : descriptor.defaultBaseUrl;
           _apiKeyController.text = connection.apiKey ?? '';
         }
-        _models =
+        final presets = _presetModelsFor(descriptor);
+        final persisted =
             models
                 .map(
                   (model) => FetchedProviderModel(
@@ -1998,8 +3221,8 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                     capabilities: model.capabilities,
                   ),
                 )
-                .toList()
-              ..sort((a, b) => a.id.compareTo(b.id));
+                .toList();
+        _models = _mergeFetchedModels(presets, persisted);
         _loadingInitial = false;
       });
     } catch (error) {
@@ -2011,44 +3234,34 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
     }
   }
 
-  void applyTemplate(String type) {
-    setState(() {
-      _providerType = type;
-      final defaultBaseUrl = _defaultBaseUrlForType(type);
-      if (defaultBaseUrl != null) {
-        _baseUrlController.text = defaultBaseUrl;
-      }
-      if (_nameController.text.trim().isEmpty) {
-        _nameController.text = type;
-      }
-    });
+  Future<void> _pasteApiKey() async {
+    final data = await Clipboard.getData('text/plain');
+    final text = data?.text?.trim();
+    if (text != null && text.isNotEmpty) {
+      setState(() => _apiKeyController.text = text);
+    }
   }
 
   Future<void> _testConnection() async {
+    final descriptor = descriptorFor(_providerKey);
+    final structuringModel = descriptor.structuringModels.isNotEmpty
+        ? descriptor.structuringModels.first.name
+        : '';
+    if (structuringModel.isEmpty) {
+      _showSnack(context.l10n.connectionTestFailed);
+      return;
+    }
     await _runBusy(() async {
-      await ref
-          .read(providerModelFetchServiceProvider)
-          .testConnection(
-            baseUrl: _baseUrlController.text,
+      await ref.read(providerStructuringClientProvider).probe(
+            descriptor: descriptor,
+            baseUrl: _baseUrlController.text.trim().isEmpty
+                ? descriptor.defaultBaseUrl
+                : _baseUrlController.text.trim(),
             apiKey: _blankToNull(_apiKeyController.text),
+            modelName: structuringModel,
           );
       if (mounted) {
         _showSnack(context.l10n.connectionTestSucceeded);
-      }
-    });
-  }
-
-  Future<void> _fetchModels() async {
-    await _runBusy(() async {
-      final models = await ref
-          .read(providerModelFetchServiceProvider)
-          .fetchModels(
-            baseUrl: _baseUrlController.text,
-            apiKey: _blankToNull(_apiKeyController.text),
-          );
-      setState(() => _models = _mergeFetchedModels(_models, models));
-      if (mounted) {
-        _showSnack('${models.length} ${context.l10n.modelsFetched}');
       }
     });
   }
@@ -2057,11 +3270,14 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
     final l10n = context.l10n;
     final name = _nameController.text.trim();
     final baseUrl = _baseUrlController.text.trim();
-    if (name.isEmpty || _providerType.trim().isEmpty) {
+    if (name.isEmpty) {
       _showSnack(l10n.providerRequiredFields);
       return;
     }
-    if (baseUrl.isEmpty) {
+    final descriptor = descriptorFor(_providerKey);
+    final effectiveBaseUrl =
+        baseUrl.isEmpty ? descriptor.defaultBaseUrl : baseUrl;
+    if (effectiveBaseUrl.isEmpty) {
       _showSnack(l10n.baseUrlRequired);
       return;
     }
@@ -2075,8 +3291,8 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
           .saveProvider(
             id: providerId,
             name: name,
-            type: _providerType,
-            baseUrl: baseUrl,
+            type: _providerKey.name,
+            baseUrl: effectiveBaseUrl,
             apiKey: _blankToNull(_apiKeyController.text),
           );
       await ref
@@ -2144,6 +3360,8 @@ class ModelAssignmentScreen extends ConsumerStatefulWidget {
 class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
   String? _selectedTranscriptionProviderId;
   String? _selectedTranscriptionModelId;
+  String? _selectedStreamingProviderId;
+  String? _selectedStreamingModelId;
   String? _selectedStructuringProviderId;
   String? _selectedStructuringModelId;
 
@@ -2168,11 +3386,13 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
           data: (value) => value,
           orElse: () => const <ModelAssignment>[],
         );
-    final transcriptionMode = ref.watch(transcriptionModeProvider);
-
     final transcriptionAssignment = _assignmentFor(
       assignments,
       ModelAssignmentTask.transcription,
+    );
+    final streamingAssignment = _assignmentFor(
+      assignments,
+      ModelAssignmentTask.transcriptionStreaming,
     );
     final structuringAssignment = _assignmentFor(
       assignments,
@@ -2182,18 +3402,27 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
     final selectedTranscriptionProvider =
         _selectedTranscriptionProviderId ??
         _validProviderId(providers, transcriptionAssignment?.providerId);
+    final selectedStreamingProvider =
+        _selectedStreamingProviderId ??
+        _validProviderId(providers, streamingAssignment?.providerId);
     final selectedStructuringProvider =
         _selectedStructuringProviderId ??
         _validProviderId(providers, structuringAssignment?.providerId);
 
-    final transcriptionModels = models.where((model) {
-      final hasRequiredCapability =
-          transcriptionMode == TranscriptionMode.streaming
-          ? model.supports(ModelCapability.streaming)
-          : model.supports(ModelCapability.speech);
-      return model.providerId == selectedTranscriptionProvider &&
-          hasRequiredCapability;
-    }).toList();
+    final transcriptionModels = models
+        .where(
+          (model) =>
+              model.providerId == selectedTranscriptionProvider &&
+              model.supports(ModelCapability.speech),
+        )
+        .toList();
+    final streamingModels = models
+        .where(
+          (model) =>
+              model.providerId == selectedStreamingProvider &&
+              model.supports(ModelCapability.streaming),
+        )
+        .toList();
     final structuringModels = models
         .where(
           (model) =>
@@ -2204,6 +3433,10 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
     final selectedTranscription = _validModelId(
       transcriptionModels,
       _selectedTranscriptionModelId ?? transcriptionAssignment?.modelId,
+    );
+    final selectedStreaming = _validModelId(
+      streamingModels,
+      _selectedStreamingModelId ?? streamingAssignment?.modelId,
     );
     final selectedStructuring = _validModelId(
       structuringModels,
@@ -2222,7 +3455,7 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
               icon: Icons.hub,
             ),
           _ModelAssignmentSection(
-            title: l10n.transcriptionModel,
+            title: l10n.transcriptionModelAfter,
             providers: providers,
             selectedProviderId: selectedTranscriptionProvider,
             models: transcriptionModels,
@@ -2235,6 +3468,23 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
             },
             onChanged: (value) {
               setState(() => _selectedTranscriptionModelId = value);
+            },
+          ),
+          const SizedBox(height: 16),
+          _ModelAssignmentSection(
+            title: l10n.transcriptionModelStreaming,
+            providers: providers,
+            selectedProviderId: selectedStreamingProvider,
+            models: streamingModels,
+            selectedModelId: selectedStreaming,
+            onProviderChanged: (value) {
+              setState(() {
+                _selectedStreamingProviderId = value;
+                _selectedStreamingModelId = null;
+              });
+            },
+            onChanged: (value) {
+              setState(() => _selectedStreamingModelId = value);
             },
           ),
           const SizedBox(height: 16),
@@ -2259,6 +3509,7 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
             onPressed: () => _saveAssignments(
               models,
               selectedTranscription,
+              selectedStreaming,
               selectedStructuring,
             ),
             icon: const Icon(Icons.save),
@@ -2298,10 +3549,12 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
   Future<void> _saveAssignments(
     List<AiModelOption> models,
     String? selectedTranscription,
+    String? selectedStreaming,
     String? selectedStructuring,
   ) async {
     final transcription = _modelById(models, selectedTranscription);
     final structuring = _modelById(models, selectedStructuring);
+    final streaming = _modelById(models, selectedStreaming);
     if (transcription == null || structuring == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(context.l10n.modelAssignmentRequired)),
@@ -2316,6 +3569,15 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
         modelId: transcription.id,
       ),
     );
+    if (streaming != null) {
+      await notifier.save(
+        ModelAssignment(
+          task: ModelAssignmentTask.transcriptionStreaming,
+          providerId: streaming.providerId,
+          modelId: streaming.id,
+        ),
+      );
+    }
     await notifier.save(
       ModelAssignment(
         task: ModelAssignmentTask.structuring,
@@ -2324,9 +3586,7 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
       ),
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.modelAssignmentSaved)),
-      );
+      showTopNotice(context, context.l10n.modelAssignmentSaved);
     }
   }
 
@@ -2363,7 +3623,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late final TextEditingController _qthController;
   late final TextEditingController _rigController;
   late final TextEditingController _antennaController;
+  late final TextEditingController _powerController;
   late final TextEditingController _notesController;
+  StationEquipment? _selectedEquipment;
   late DateTime? _dateTime;
   late String? _band;
   late String? _mode;
@@ -2373,6 +3635,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late String? _rawTranscript;
   bool _isAudioPlaying = false;
   String? _audioPlaybackError;
+  bool _retrying = false;
 
   @override
   void initState() {
@@ -2389,6 +3652,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _rigController = TextEditingController(text: draft.rig?.value ?? '');
     _antennaController = TextEditingController(
       text: draft.antenna?.value ?? '',
+    );
+    _powerController = TextEditingController(
+      text: draft.power?.value ?? '',
     );
     _notesController = TextEditingController(text: draft.notes?.value ?? '');
     _dateTime = draft.dateTime.value;
@@ -2408,6 +3674,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _qthController.dispose();
     _rigController.dispose();
     _antennaController.dispose();
+    _powerController.dispose();
     _notesController.dispose();
     unawaited(ref.read(audioPlaybackServiceProvider).stop());
     super.dispose();
@@ -2422,23 +3689,79 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          DropdownButtonFormField<LogStatus>(
-            initialValue: status,
-            decoration: InputDecoration(labelText: l10n.status),
-            items: LogStatus.values
+          // 状态切换：failed 仅由系统设置，不在可选项中
+          SegmentedButton<LogStatus>(
+            segments: LogStatus.values
+                .where((s) => s != LogStatus.failed)
                 .map(
-                  (value) => DropdownMenuItem(
-                    value: value,
-                    child: Text(_statusLabel(context, value)),
+                  (s) => ButtonSegment<LogStatus>(
+                    value: s,
+                    label: Text(_statusLabel(context, s)),
                   ),
                 )
                 .toList(),
-            onChanged: (value) {
-              if (value != null) {
-                setState(() => status = value);
-              }
+            selected: {status == LogStatus.failed ? LogStatus.draft : status},
+            onSelectionChanged: (selected) {
+              setState(() => status = selected.first);
             },
           ),
+          // 失败状态：错误卡片 + 重试按钮
+          if (status == LogStatus.failed) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          l10n.failed,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(
+                                color:
+                                    Theme.of(context).colorScheme.onErrorContainer,
+                              ),
+                        ),
+                      ],
+                    ),
+                    if (widget.draft.errorMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorLabel(context, widget.draft.errorMessage!),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer,
+                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton.tonalIcon(
+                      onPressed: _retrying ? null : _retryFinishQso,
+                      icon: _retrying
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh),
+                      label: Text(_retrying ? l10n.retrying : l10n.retry),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _CardSection(
             title: l10n.contactInfo,
@@ -2556,12 +3879,27 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
           _CardSection(
             title: l10n.stationInfo,
             children: [
-              _TwoColumnFields(
-                left: _ReviewField(label: l10n.rig, controller: _rigController),
-                right: _ReviewField(
-                  label: l10n.antenna,
-                  controller: _antennaController,
-                ),
+              _EquipmentSelector(
+                selectedEquipment: _selectedEquipment,
+                onSelected: (equipment) {
+                  setState(() {
+                    _selectedEquipment = equipment;
+                    if (equipment != null) {
+                      _rigController.text = equipment.name;
+                      _antennaController.text = equipment.antenna;
+                      if (equipment.powerOptions.isNotEmpty) {
+                        _powerController.text = equipment.powerOptions.first;
+                      }
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              _AntennaDropdown(controller: _antennaController),
+              _PowerDropdown(
+                controller: _powerController,
+                powerOptions:
+                    _selectedEquipment?.powerOptions ?? const [],
               ),
             ],
           ),
@@ -2690,9 +4028,51 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       notes: _optionalEditedField(_notesController.text),
       rig: _optionalEditedField(_rigController.text),
       antenna: _optionalEditedField(_antennaController.text),
+      power: _optionalEditedField(_powerController.text),
       audioPath: _audioPath,
       rawTranscript: _rawTranscript,
     );
+  }
+
+  Future<void> _retryFinishQso() async {
+    setState(() => _retrying = true);
+    try {
+      final draft = await ref
+          .read(qsoCaptureProvider.notifier)
+          .finishQso(
+            audioPath: _audioPath,
+            startedAt: widget.draft.dateTime.value,
+            mode: TranscriptionMode.afterQso,
+            failureHandling: ref.read(failureHandlingProvider),
+          );
+      if (!mounted) return;
+      setState(() {
+        status = draft.status;
+        _retrying = false;
+        // 用重试结果更新字段
+        _callsignController.text = draft.callsign.value;
+        _frequencyController.text = draft.frequency.value;
+        _sentRstController.text = draft.sentRst.value;
+        _receivedRstController.text = draft.receivedRst.value;
+        _nameController.text = draft.name?.value ?? '';
+        _qthController.text = draft.qth?.value ?? '';
+        _rigController.text = draft.rig?.value ?? '';
+        _antennaController.text = draft.antenna?.value ?? '';
+        _powerController.text = draft.power?.value ?? '';
+        _notesController.text = draft.notes?.value ?? '';
+        _dateTime = draft.dateTime.value;
+        _band = draft.band.value.trim().isEmpty
+            ? null
+            : draft.band.value.trim();
+        _mode = draft.mode.value.trim().isEmpty
+            ? null
+            : draft.mode.value.trim();
+        _rawTranscript = draft.rawTranscript;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _retrying = false);
+    }
   }
 
   Future<void> _deleteRetainedAudio() async {
@@ -3128,136 +4508,6 @@ class _TranscriptCard extends StatelessWidget {
   }
 }
 
-class _DraftCard extends StatelessWidget {
-  const _DraftCard({required this.draft});
-
-  final QsoDraft draft;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return _CardSection(
-      title: l10n.draftEntry,
-      trailing: Wrap(
-        spacing: 8,
-        children: [
-          _LegendDot(
-            color: Theme.of(context).colorScheme.primary,
-            label: l10n.aiFilled,
-          ),
-          _LegendDot(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            label: l10n.userEdited,
-          ),
-        ],
-      ),
-      children: [
-        _FieldTile(
-          label: l10n.callsign,
-          field: draft.callsign,
-          requiredField: true,
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            l10n.bandOrFrequencyRequired,
-            style: Theme.of(context).textTheme.labelMedium,
-          ),
-        ),
-        _TwoColumnFields(
-          left: _FieldTile(label: l10n.band, field: draft.band),
-          right: _FieldTile(label: l10n.frequency, field: draft.frequency),
-        ),
-        _FieldTile(label: l10n.mode, field: draft.mode, requiredField: true),
-        _TwoColumnFields(
-          left: _FieldTile(
-            label: l10n.sentRst,
-            field: draft.sentRst,
-            requiredField: true,
-          ),
-          right: _FieldTile(
-            label: l10n.receivedRst,
-            field: draft.receivedRst,
-            requiredField: true,
-          ),
-        ),
-        _TwoColumnFields(
-          left: _FieldTile(label: l10n.qth, field: draft.qth),
-          right: _FieldTile(label: l10n.name, field: draft.name),
-        ),
-        _TwoColumnFields(
-          left: _FieldTile(label: l10n.rig, field: draft.rig),
-          right: _FieldTile(label: l10n.antenna, field: draft.antenna),
-        ),
-        _FieldTile(label: l10n.notes, field: draft.notes, maxLines: 3),
-      ],
-    );
-  }
-}
-
-class _FieldTile extends StatelessWidget {
-  const _FieldTile({
-    required this.label,
-    required this.field,
-    this.requiredField = false,
-    this.maxLines = 1,
-  });
-
-  final String label;
-  final QsoField<String>? field;
-  final bool requiredField;
-  final int maxLines;
-
-  @override
-  Widget build(BuildContext context) {
-    final needsReview = field?.needsReview ?? false;
-    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextFormField(
-        initialValue: field?.value ?? '',
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: requiredField ? '$label *' : label,
-          helperText: needsReview ? context.l10n.lowConfidence : null,
-          helperStyle: needsReview ? TextStyle(color: osc.amber) : null,
-          fillColor: needsReview ? osc.amber.withAlpha(20) : null,
-          filled: needsReview,
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentSessionList extends StatelessWidget {
-  const _RecentSessionList({required this.logs});
-
-  final List<QsoDraft> logs;
-
-  @override
-  Widget build(BuildContext context) {
-    return _CardSection(
-      title: context.l10n.recentSession,
-      children: [
-        for (final log in logs)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              log.callsign.value,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text('${log.band.value} ${log.mode.value}'),
-            trailing: Text('${log.sentRst.value} / ${log.receivedRst.value}'),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => QsoReviewScreen(draft: log),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
 
 class _LogListItem extends StatelessWidget {
   const _LogListItem({required this.log});
@@ -3270,6 +4520,7 @@ class _LogListItem extends StatelessWidget {
     final frequency = log.frequency.value.trim();
     final band = log.band.value.trim();
     final mode = log.mode.value.trim();
+    final dateTime = log.dateTime.value;
     final meta = [
       if (frequency.isNotEmpty) '$frequency MHz',
       if (band.isNotEmpty) band,
@@ -3294,41 +4545,60 @@ class _LogListItem extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.all(14),
-                    child: Column(
+                    child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
                                 log.callsign.value,
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
-                            ),
+                              const SizedBox(height: 6),
+                              Text(
+                                meta.isEmpty ? '—' : meta,
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${log.sentRst.value} / ${log.receivedRst.value}',
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (dateTime != null) const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
                             _StatusChip(status: log.status),
+                            if (dateTime != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                _formatLocalDateTime(dateTime),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          meta.isEmpty ? '—' : meta,
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${log.sentRst.value} / ${log.receivedRst.value}',
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
                         ),
                       ],
                     ),
@@ -3719,28 +4989,6 @@ class _TwoColumnFields extends StatelessWidget {
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  const _LegendDot({required this.color, required this.label});
-
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.circle, color: color, size: 10),
-          const SizedBox(width: 4),
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ],
-      ),
-    );
-  }
-}
-
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status});
 
@@ -3808,33 +5056,129 @@ class _ModelAssignmentSection extends StatelessWidget {
         if (models.isNotEmpty)
           DropdownButtonFormField<String>(
             initialValue: effectiveModelId,
+            isExpanded: true,
             decoration: InputDecoration(labelText: context.l10n.modelName),
             items: [
               for (final model in models)
-                DropdownMenuItem(value: model.id, child: Text(model.name)),
+                DropdownMenuItem(
+                  value: model.id,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(model.name),
+                      for (final capability in model.capabilities)
+                        _CapabilityChip(capability: capability),
+                    ],
+                  ),
+                ),
             ],
             onChanged: onChanged,
           ),
-        const SizedBox(height: 8),
-        for (final model in models)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Wrap(
-              spacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  model.name,
-                  style: model.id == effectiveModelId
-                      ? const TextStyle(fontWeight: FontWeight.bold)
-                      : null,
+      ],
+    );
+  }
+}
+
+// 顶部短暂提示（替代默认底部 SnackBar）：更短、位置在页面顶部，用于保存成功等确认。
+void showTopNotice(
+  BuildContext context,
+  String message, {
+  Duration duration = const Duration(milliseconds: 1500),
+}) {
+  final overlay = Overlay.of(context, rootOverlay: true);
+  late OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => _TopNotice(
+      message: message,
+      duration: duration,
+      onDismissed: entry.remove,
+    ),
+  );
+  overlay.insert(entry);
+}
+
+class _TopNotice extends StatefulWidget {
+  const _TopNotice({
+    required this.message,
+    required this.duration,
+    required this.onDismissed,
+  });
+
+  final String message;
+  final Duration duration;
+  final VoidCallback onDismissed;
+
+  @override
+  State<_TopNotice> createState() => _TopNoticeState();
+}
+
+class _TopNoticeState extends State<_TopNotice>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+  Timer? _hideTimer;
+  bool _removed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.forward();
+    _hideTimer = Timer(widget.duration, () {
+      _controller.reverse().whenComplete(() {
+        if (!_removed) {
+          _removed = true;
+          widget.onDismissed();
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Center(
+          child: FadeTransition(
+            opacity: _controller,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12, left: 16, right: 16),
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(10),
+                color: theme.colorScheme.primaryContainer,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  child: Text(
+                    widget.message,
+                    style: TextStyle(
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
-                for (final capability in model.capabilities)
-                  _CapabilityChip(capability: capability),
-              ],
+              ),
             ),
           ),
-      ],
+        ),
+      ),
     );
   }
 }
@@ -3854,6 +5198,149 @@ class _CapabilityChip extends StatelessWidget {
       ModelCapability.structuring => l10n.structuring,
     };
     return Chip(label: Text(label), visualDensity: VisualDensity.compact);
+  }
+}
+
+class _EquipmentSelector extends ConsumerWidget {
+  const _EquipmentSelector({
+    required this.selectedEquipment,
+    required this.onSelected,
+  });
+
+  final StationEquipment? selectedEquipment;
+  final ValueChanged<StationEquipment?> onSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final equipmentState = ref.watch(stationEquipmentProvider);
+    final equipment = equipmentState.maybeWhen(
+      data: (v) => v,
+      orElse: () => const <StationEquipment>[],
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<StationEquipment?>(
+            initialValue: selectedEquipment,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: l10n.selectEquipment,
+              prefixIcon: const Icon(Icons.radio),
+            ),
+            items: [
+              DropdownMenuItem<StationEquipment?>(
+                value: null,
+                child: Text(l10n.selectEquipment),
+              ),
+              for (final eq in equipment)
+                DropdownMenuItem<StationEquipment?>(
+                  value: eq,
+                  child: Text(eq.name),
+                ),
+            ],
+            onChanged: onSelected,
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          tooltip: l10n.addEquipment,
+          icon: const Icon(Icons.add_circle_outline),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const StationEquipmentScreen(),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// 天线下拉：选项来自所有已配置设备的天线（去重）；当前值不在选项中则自动并入。
+class _AntennaDropdown extends ConsumerWidget {
+  const _AntennaDropdown({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final equipment = ref.watch(stationEquipmentProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => const <StationEquipment>[],
+        );
+    final antennas = equipment
+        .map((e) => e.antenna)
+        .where((a) => a.isNotEmpty)
+        .toSet()
+        .toList();
+    final current = controller.text.trim();
+    final options = <String>[
+      ...antennas,
+      if (current.isNotEmpty && !antennas.contains(current)) current,
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: current.isEmpty ? null : current,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: l10n.antenna,
+          prefixIcon: const Icon(Icons.cell_tower),
+        ),
+        hint: Text(l10n.antenna),
+        items: [
+          for (final a in options) DropdownMenuItem(value: a, child: Text(a)),
+        ],
+        onChanged: (value) {
+          if (value != null) controller.text = value;
+        },
+      ),
+    );
+  }
+}
+
+class _PowerDropdown extends StatelessWidget {
+  const _PowerDropdown({
+    required this.controller,
+    required this.powerOptions,
+  });
+
+  final TextEditingController controller;
+  final List<String> powerOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    if (powerOptions.isEmpty) {
+      return _ReviewField(
+        label: l10n.power,
+        controller: controller,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        initialValue: controller.text.isEmpty ? null : controller.text,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: l10n.power,
+          prefixIcon: const Icon(Icons.electrical_services),
+        ),
+        items: [
+          for (final option in powerOptions)
+            DropdownMenuItem(value: option, child: Text(option)),
+        ],
+        onChanged: (value) {
+          if (value != null) {
+            controller.text = value;
+          }
+        },
+      ),
+    );
   }
 }
 
@@ -3890,34 +5377,14 @@ String? _blankToNull(String value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-const _providerTypes = [
-  'OpenAI',
-  'OpenAI-compatible',
-  'Local endpoint',
-  'DeepSeek',
-  'Qwen',
-  'Zhipu',
-  'Gemini',
-];
-
-String? _defaultBaseUrlForType(String type) {
-  return switch (type) {
-    'OpenAI' => 'https://api.openai.com/v1',
-    'Local endpoint' => 'http://10.0.2.2:8000/v1',
-    'DeepSeek' => 'https://api.deepseek.com',
-    'Qwen' => 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    'Zhipu' => 'https://open.bigmodel.cn/api/paas/v4',
-    'Gemini' => 'https://generativelanguage.googleapis.com/v1beta/openai',
-    _ => null,
-  };
-}
-
-Widget _templateChip(String type, VoidCallback onPressed) {
-  return ActionChip(
-    label: Text(type),
-    avatar: const Icon(Icons.flash_on, size: 14),
-    onPressed: onPressed,
-  );
+List<FetchedProviderModel> _presetModelsFor(ProviderDescriptor descriptor) {
+  return [
+    for (final model in descriptor.presetModels)
+      FetchedProviderModel(
+        id: model.name,
+        capabilities: {...model.capabilities},
+      ),
+  ];
 }
 
 List<FetchedProviderModel> _mergeFetchedModels(
@@ -4002,6 +5469,56 @@ String _captureWarningLabel(BuildContext context, String warning) {
   };
 }
 
+Future<bool> _validateImportFormat(
+  BuildContext context,
+  WidgetRef ref,
+  String audioPath,
+) async {
+  final ext = p.extension(audioPath).toLowerCase().replaceFirst('.', '');
+  if (ext == 'pcm') return true;
+  final assignments = await ref
+      .read(modelAssignmentRepositoryProvider)
+      .listAssignments();
+  ModelAssignment? asrAssignment;
+  for (final a in assignments) {
+    if (a.task == ModelAssignmentTask.transcription) {
+      asrAssignment = a;
+      break;
+    }
+  }
+  if (asrAssignment == null) return true;
+  final connection = await ref
+      .read(providerRepositoryProvider)
+      .findConnection(asrAssignment.providerId);
+  if (connection == null) return true;
+  final descriptor = descriptorFor(AiProvider.fromKey(connection.type));
+  final supported = descriptor.asr?.supportedFormats ?? const [];
+  if (supported.isEmpty || supported.contains(ext)) return true;
+  if (!context.mounted) return false;
+  // 格式不匹配为硬性阻断：下游 _validateAudioFormat 会无条件抛错，
+  // 故此处仅警告并阻止导入（不提供无法兑现的"继续"按钮）。
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(ctx.l10n.audioFormatWarningTitle),
+      content: Text(
+        ctx.l10n.audioFormatWarningBody(
+          descriptor.displayName,
+          ext,
+          supported.join(', '),
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(MaterialLocalizations.of(ctx).okButtonLabel),
+        ),
+      ],
+    ),
+  );
+  return false;
+}
+
 String _errorLabel(BuildContext context, String error) {
   final l10n = context.l10n;
   final code = error.startsWith('Bad state: ')
@@ -4022,6 +5539,13 @@ String _errorLabel(BuildContext context, String error) {
   }
   if (code.startsWith('model_list_all_candidates_failed:')) {
     return l10n.modelListAllCandidatesFailed;
+  }
+  if (code.startsWith('provider_without_asr')) {
+    return l10n.providerWithoutAsr;
+  }
+  if (code.startsWith('connection_test_failed')) {
+    final statusCode = code.split(':').last.trim();
+    return '${l10n.connectionTestFailed}: $statusCode';
   }
   return switch (code) {
     'base_url_required' => l10n.baseUrlRequired,

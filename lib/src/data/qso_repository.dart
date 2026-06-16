@@ -261,6 +261,7 @@ class QsoRepository {
       'notes': qso.notes?.value.trim(),
       'rig': qso.rig?.value.trim(),
       'antenna': qso.antenna?.value.trim(),
+      'power': qso.power?.value.trim(),
       'audio_path': qso.audioPath,
       'raw_transcript': qso.rawTranscript,
       'created_at': timestamp,
@@ -296,6 +297,7 @@ class QsoRepository {
       notes: _optionalField(row['notes'] as String?),
       rig: _optionalField(row['rig'] as String?),
       antenna: _optionalField(row['antenna'] as String?),
+      power: _optionalField(row['power'] as String?),
       audioPath: row['audio_path'] as String?,
       rawTranscript: row['raw_transcript'] as String?,
     );

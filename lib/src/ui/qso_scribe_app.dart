@@ -15,6 +15,25 @@ class QsoScribeApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final localeMode = ref.watch(localeModeProvider);
     final setupCompleted = ref.watch(setupCompletedProvider);
+    final welcomeShown = ref.watch(welcomeShownProvider);
+
+    final isSetupDone = setupCompleted.maybeWhen(
+      data: (completed) => completed,
+      orElse: () => false,
+    );
+    final isWelcomeDone = welcomeShown.maybeWhen(
+      data: (shown) => shown,
+      orElse: () => false,
+    );
+
+    Widget home;
+    if (!isSetupDone) {
+      home = const FirstRunSetupScreen();
+    } else if (!isWelcomeDone) {
+      home = const WelcomeScreen();
+    } else {
+      home = const MainShell();
+    }
 
     return MaterialApp(
       title: 'QSO Scribe',
@@ -29,13 +48,7 @@ class QsoScribeApp extends ConsumerWidget {
       ],
       theme: buildAppTheme(Brightness.light),
       darkTheme: buildAppTheme(Brightness.dark),
-      home:
-          setupCompleted.maybeWhen(
-            data: (completed) => completed,
-            orElse: () => false,
-          )
-          ? const MainShell()
-          : const FirstRunSetupScreen(),
+      home: home,
     );
   }
 }

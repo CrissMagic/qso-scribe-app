@@ -521,7 +521,7 @@ abstract class AppLocalizations {
   /// No description provided for @rawTranscript.
   ///
   /// In en, this message translates to:
-  /// **'Raw transcript text'**
+  /// **'Raw text'**
   String get rawTranscript;
 
   /// No description provided for @selectedForExport.
@@ -1247,7 +1247,7 @@ abstract class AppLocalizations {
   /// No description provided for @providerTypeHint.
   ///
   /// In en, this message translates to:
-  /// **'If unsure, choose OpenAI'**
+  /// **'Choose a supported provider'**
   String get providerTypeHint;
 
   /// No description provided for @baseUrlHint.
@@ -1495,6 +1495,526 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Package path is invalid'**
   String get invalidApkPath;
+
+  /// No description provided for @providerWithoutAsr.
+  ///
+  /// In en, this message translates to:
+  /// **'This provider does not support speech recognition'**
+  String get providerWithoutAsr;
+
+  /// No description provided for @connectionTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection test failed'**
+  String get connectionTestFailed;
+
+  /// No description provided for @yourCallsign.
+  ///
+  /// In en, this message translates to:
+  /// **'Your callsign'**
+  String get yourCallsign;
+
+  /// No description provided for @yourCallsignHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your amateur radio callsign, e.g. BV2AAA'**
+  String get yourCallsignHint;
+
+  /// No description provided for @yourQth.
+  ///
+  /// In en, this message translates to:
+  /// **'My QTH (station location)'**
+  String get yourQth;
+
+  /// No description provided for @yourQthHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. Shanghai, or a grid locator like PM95'**
+  String get yourQthHint;
+
+  /// No description provided for @save.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get save;
+
+  /// No description provided for @sortNewestFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest first'**
+  String get sortNewestFirst;
+
+  /// No description provided for @sortOldestFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Oldest first'**
+  String get sortOldestFirst;
+
+  /// No description provided for @filterDimensionStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'Status'**
+  String get filterDimensionStatus;
+
+  /// No description provided for @filterDimensionBand.
+  ///
+  /// In en, this message translates to:
+  /// **'Band'**
+  String get filterDimensionBand;
+
+  /// No description provided for @filterDimensionMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode'**
+  String get filterDimensionMode;
+
+  /// No description provided for @paste.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste'**
+  String get paste;
+
+  /// No description provided for @transcriptionModelAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'After-QSO transcription model'**
+  String get transcriptionModelAfter;
+
+  /// No description provided for @transcriptionModelStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Real-time transcription model'**
+  String get transcriptionModelStreaming;
+
+  /// No description provided for @tokenUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'Token usage'**
+  String get tokenUsage;
+
+  /// No description provided for @tokenUsageDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'View AI request consumption'**
+  String get tokenUsageDesc;
+
+  /// No description provided for @totalTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Total tokens'**
+  String get totalTokens;
+
+  /// No description provided for @requestCount.
+  ///
+  /// In en, this message translates to:
+  /// **'Requests'**
+  String get requestCount;
+
+  /// No description provided for @promptTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Prompt'**
+  String get promptTokens;
+
+  /// No description provided for @completionTokens.
+  ///
+  /// In en, this message translates to:
+  /// **'Completion'**
+  String get completionTokens;
+
+  /// No description provided for @clearRecords.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear records'**
+  String get clearRecords;
+
+  /// No description provided for @noTokenRecords.
+  ///
+  /// In en, this message translates to:
+  /// **'No usage records yet'**
+  String get noTokenRecords;
+
+  /// No description provided for @clearRecordsConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear all token usage records?'**
+  String get clearRecordsConfirm;
+
+  /// No description provided for @taskTranscription.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcription'**
+  String get taskTranscription;
+
+  /// No description provided for @taskStructuring.
+  ///
+  /// In en, this message translates to:
+  /// **'Structuring'**
+  String get taskStructuring;
+
+  /// No description provided for @taskStreaming.
+  ///
+  /// In en, this message translates to:
+  /// **'Real-time'**
+  String get taskStreaming;
+
+  /// No description provided for @usageUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'—'**
+  String get usageUnknown;
+
+  /// No description provided for @failedReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Failure reason'**
+  String get failedReason;
+
+  /// No description provided for @retrying.
+  ///
+  /// In en, this message translates to:
+  /// **'Retrying…'**
+  String get retrying;
+
+  /// No description provided for @statusDraft2.
+  ///
+  /// In en, this message translates to:
+  /// **'Draft'**
+  String get statusDraft2;
+
+  /// No description provided for @statusNeedsReview2.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get statusNeedsReview2;
+
+  /// No description provided for @statusConfirmed2.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirmed'**
+  String get statusConfirmed2;
+
+  /// No description provided for @importedAsDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported as draft'**
+  String get importedAsDraft;
+
+  /// No description provided for @callsignSetup.
+  ///
+  /// In en, this message translates to:
+  /// **'Callsign setup'**
+  String get callsignSetup;
+
+  /// No description provided for @callsignSetupDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your callsign for quick QSO logging'**
+  String get callsignSetupDesc;
+
+  /// No description provided for @stationEquipment.
+  ///
+  /// In en, this message translates to:
+  /// **'Station equipment'**
+  String get stationEquipment;
+
+  /// No description provided for @stationEquipmentDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage rigs, antennas, and power settings'**
+  String get stationEquipmentDesc;
+
+  /// No description provided for @equipmentName.
+  ///
+  /// In en, this message translates to:
+  /// **'Equipment name'**
+  String get equipmentName;
+
+  /// No description provided for @equipmentNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. IC-7300, FT-991A'**
+  String get equipmentNameHint;
+
+  /// No description provided for @antennaName.
+  ///
+  /// In en, this message translates to:
+  /// **'Antenna'**
+  String get antennaName;
+
+  /// No description provided for @antennaNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'e.g. DP-80, Hexbeam'**
+  String get antennaNameHint;
+
+  /// No description provided for @powerOptions.
+  ///
+  /// In en, this message translates to:
+  /// **'Power options'**
+  String get powerOptions;
+
+  /// No description provided for @powerOptionsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'One value per line, e.g. 5W, 10W, 50W, 100W'**
+  String get powerOptionsHint;
+
+  /// No description provided for @addEquipment.
+  ///
+  /// In en, this message translates to:
+  /// **'Add equipment'**
+  String get addEquipment;
+
+  /// No description provided for @noEquipmentSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'No equipment configured yet'**
+  String get noEquipmentSaved;
+
+  /// No description provided for @equipmentSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Equipment saved'**
+  String get equipmentSaved;
+
+  /// No description provided for @power.
+  ///
+  /// In en, this message translates to:
+  /// **'Power'**
+  String get power;
+
+  /// No description provided for @selectEquipment.
+  ///
+  /// In en, this message translates to:
+  /// **'Select equipment'**
+  String get selectEquipment;
+
+  /// No description provided for @welcomeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome to QSO Scribe'**
+  String get welcomeTitle;
+
+  /// No description provided for @welcomeCallsign.
+  ///
+  /// In en, this message translates to:
+  /// **'Welcome, {callsign}'**
+  String welcomeCallsign(Object callsign);
+
+  /// No description provided for @welcomeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to log your next QSO'**
+  String get welcomeSubtitle;
+
+  /// No description provided for @skipWelcome.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter'**
+  String get skipWelcome;
+
+  /// No description provided for @rawText.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw text'**
+  String get rawText;
+
+  /// No description provided for @about.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// No description provided for @aboutDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'App info, privacy policy, and credits'**
+  String get aboutDesc;
+
+  /// No description provided for @appDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Hi, glad you\'re here. This is a community-maintained amateur radio QSO logging tool built with AI assistance.'**
+  String get appDescription;
+
+  /// No description provided for @privacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get privacyPolicy;
+
+  /// No description provided for @openSourceCredits.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Source Credits'**
+  String get openSourceCredits;
+
+  /// No description provided for @relatedLinks.
+  ///
+  /// In en, this message translates to:
+  /// **'Related Links'**
+  String get relatedLinks;
+
+  /// No description provided for @contestMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Contest'**
+  String get contestMode;
+
+  /// No description provided for @contestModeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Fast QSO entry for contest operation'**
+  String get contestModeDesc;
+
+  /// No description provided for @filter.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter'**
+  String get filter;
+
+  /// No description provided for @noMoreData.
+  ///
+  /// In en, this message translates to:
+  /// **'No more data'**
+  String get noMoreData;
+
+  /// No description provided for @pullToRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull to refresh'**
+  String get pullToRefresh;
+
+  /// No description provided for @recording.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording'**
+  String get recording;
+
+  /// No description provided for @afterTranscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'After QSO'**
+  String get afterTranscribe;
+
+  /// No description provided for @realtimeTranscribe.
+  ///
+  /// In en, this message translates to:
+  /// **'Real-time'**
+  String get realtimeTranscribe;
+
+  /// No description provided for @stationSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Station settings'**
+  String get stationSettings;
+
+  /// No description provided for @stationSettingsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Callsign, rig, antenna and power'**
+  String get stationSettingsDesc;
+
+  /// No description provided for @aiModels.
+  ///
+  /// In en, this message translates to:
+  /// **'AI models'**
+  String get aiModels;
+
+  /// No description provided for @aiModelsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Provider and model configuration'**
+  String get aiModelsDesc;
+
+  /// No description provided for @appSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'App settings'**
+  String get appSettings;
+
+  /// No description provided for @appSettingsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Language, audio, and update preferences'**
+  String get appSettingsDesc;
+
+  /// No description provided for @aiProcess.
+  ///
+  /// In en, this message translates to:
+  /// **'AI Process'**
+  String get aiProcess;
+
+  /// No description provided for @discardAndRestart.
+  ///
+  /// In en, this message translates to:
+  /// **'Discard & restart'**
+  String get discardAndRestart;
+
+  /// No description provided for @afterQsoRecorderHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording in progress. Audio will be transcribed and structured after you stop.'**
+  String get afterQsoRecorderHint;
+
+  /// No description provided for @streamingStoppedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording stopped. Review the transcript above, then tap AI Process to structure it.'**
+  String get streamingStoppedHint;
+
+  /// No description provided for @aboutAppVersion.
+  ///
+  /// In en, this message translates to:
+  /// **'Version {version}'**
+  String aboutAppVersion(Object version);
+
+  /// No description provided for @privacyPolicyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'All data (QSO logs, audio, transcripts, and settings) is stored locally on your device. API keys are kept on-device and only sent to the AI provider you configure. No data is collected, uploaded to our servers, or shared with third parties.'**
+  String get privacyPolicyBody;
+
+  /// No description provided for @openSourceCreditsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Built with Flutter, Riverpod, sqflite, record, file_picker, and many other open-source packages. See pubspec.yaml for the full dependency list.'**
+  String get openSourceCreditsBody;
+
+  /// No description provided for @relatedLinksBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Project homepage, issue tracker, and release downloads are hosted on GitHub. Visit the Software Update screen to check for the latest release.'**
+  String get relatedLinksBody;
+
+  /// No description provided for @githubLink.
+  ///
+  /// In en, this message translates to:
+  /// **'GitHub Repository'**
+  String get githubLink;
+
+  /// No description provided for @continueButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get continueButton;
+
+  /// No description provided for @audioFormatWarningTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio format warning'**
+  String get audioFormatWarningTitle;
+
+  /// No description provided for @audioFormatWarningBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The current ASR model ({provider}) may not support .{format} format. Supported: {supported}. Continue anyway?'**
+  String audioFormatWarningBody(
+    String provider,
+    String format,
+    String supported,
+  );
 }
 
 class _AppLocalizationsDelegate
