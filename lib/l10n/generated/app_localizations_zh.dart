@@ -369,10 +369,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get completed => '已完成';
 
   @override
-  String get noStreamingTranscript => '尚未产生实时转写内容';
+  String get noStreamingTranscript => '等待语音';
 
   @override
   String get noAudioFile => '未保留音频文件';
+
+  @override
+  String get originalAudioDeleted => '原始音频已在识别后删除';
 
   @override
   String get playAudio => '播放音频';
@@ -382,6 +385,21 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get audioPlaybackFailed => '音频播放失败';
+
+  @override
+  String get otherStation => '对方';
+
+  @override
+  String get myStation => '我方';
+
+  @override
+  String get unrecognizedSpeech => '未识别到文字';
+
+  @override
+  String get switchToMyStation => '标记为我方';
+
+  @override
+  String get switchToOtherStation => '标记为对方';
 
   @override
   String get noRawTranscript => '未保留原始转写文本';
@@ -613,7 +631,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get softwareUpdateDesc => '检查最新版本与更新说明';
 
   @override
-  String get checkUpdate => '检查更新';
+  String get checkUpdate => '检查';
 
   @override
   String get currentVersion => '当前版本';
@@ -628,10 +646,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get newVersionAvailable => '发现新版本';
 
   @override
-  String get updateNotes => '更新说明';
+  String get updateNotes => '说明';
 
   @override
-  String get goToDownload => '前往 GitHub 下载';
+  String get goToDownload => 'GitHub 下载';
 
   @override
   String get updateCheckFailed => '检查更新失败';
@@ -649,7 +667,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get checkUpdatesOnStartup => '启动时检查更新';
 
   @override
-  String get checkUpdatesOnStartupDesc => '进入主界面后自动检查 GitHub Release';
+  String get checkUpdatesOnStartupDesc => '自动检查 GitHub Release';
 
   @override
   String get viewUpdate => '查看';
@@ -670,13 +688,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get downloadProgress => '下载进度';
 
   @override
-  String get downloadAndOpenInstaller => '下载后打开安装确认';
+  String get downloadAndOpenInstaller => '下载并安装';
 
   @override
   String get backgroundDownload => '后台下载';
 
   @override
-  String get downloadThenOpenInstaller => '下载完成后打开安装确认';
+  String get downloadThenOpenInstaller => '下载完成后安装';
 
   @override
   String get backgroundDownloading => '后台下载中';
@@ -685,7 +703,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateDownloaded => '下载完成';
 
   @override
-  String get openInstaller => '打开安装确认';
+  String get openInstaller => '安装';
 
   @override
   String get updateNetworkFailed => '网络连接失败';
@@ -882,8 +900,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aboutDesc => '应用信息、隐私政策和致谢';
 
   @override
-  String get appDescription =>
-      'Hi，很高兴你能看到这里，这是一个由社区维护的业余无线电 QSO 记录工具，借助 AI 辅助开发。';
+  String get appDescription => '本地 QSO 记录工具。';
 
   @override
   String get privacyPolicy => '隐私政策';
@@ -946,7 +963,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get afterQsoRecorderHint => '正在录音，停止后音频将自动转写并结构化。';
 
   @override
-  String get streamingStoppedHint => '录音已停止。请核对上方转写文本，然后点击 AI 处理进行结构化。';
+  String get streamingStoppedHint => '录音已停止';
 
   @override
   String aboutAppVersion(Object version) {

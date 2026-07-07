@@ -381,10 +381,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get completed => 'Completed';
 
   @override
-  String get noStreamingTranscript => 'No live transcript yet';
+  String get noStreamingTranscript => 'Waiting for speech';
 
   @override
   String get noAudioFile => 'No audio file retained';
+
+  @override
+  String get originalAudioDeleted =>
+      'Original audio was deleted after recognition';
 
   @override
   String get playAudio => 'Play audio';
@@ -394,6 +398,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get audioPlaybackFailed => 'Audio playback failed';
+
+  @override
+  String get otherStation => 'Other station';
+
+  @override
+  String get myStation => 'My station';
+
+  @override
+  String get unrecognizedSpeech => 'No transcript recognized';
+
+  @override
+  String get switchToMyStation => 'Mark as my station';
+
+  @override
+  String get switchToOtherStation => 'Mark as other station';
 
   @override
   String get noRawTranscript => 'No raw transcript retained';
@@ -640,7 +659,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get softwareUpdateDesc => 'Check the latest version and release notes';
 
   @override
-  String get checkUpdate => 'Check for updates';
+  String get checkUpdate => 'Check';
 
   @override
   String get currentVersion => 'Current version';
@@ -655,10 +674,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get newVersionAvailable => 'A new version is available';
 
   @override
-  String get updateNotes => 'Release notes';
+  String get updateNotes => 'Notes';
 
   @override
-  String get goToDownload => 'Download on GitHub';
+  String get goToDownload => 'GitHub download';
 
   @override
   String get updateCheckFailed => 'Update check failed';
@@ -676,8 +695,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get checkUpdatesOnStartup => 'Check for updates on startup';
 
   @override
-  String get checkUpdatesOnStartupDesc =>
-      'Check GitHub Releases after entering the main screen';
+  String get checkUpdatesOnStartupDesc => 'Check GitHub Releases';
 
   @override
   String get viewUpdate => 'View';
@@ -698,14 +716,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get downloadProgress => 'Download progress';
 
   @override
-  String get downloadAndOpenInstaller => 'Download, then open install prompt';
+  String get downloadAndOpenInstaller => 'Download and install';
 
   @override
   String get backgroundDownload => 'Background download';
 
   @override
-  String get downloadThenOpenInstaller =>
-      'Install prompt will open after download';
+  String get downloadThenOpenInstaller => 'Install after download';
 
   @override
   String get backgroundDownloading => 'Downloading in background';
@@ -714,7 +731,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateDownloaded => 'Download complete';
 
   @override
-  String get openInstaller => 'Open install prompt';
+  String get openInstaller => 'Install';
 
   @override
   String get updateNetworkFailed => 'Network connection failed';
@@ -916,8 +933,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aboutDesc => 'App info, privacy policy, and credits';
 
   @override
-  String get appDescription =>
-      'Hi, glad you\'re here. This is a community-maintained amateur radio QSO logging tool built with AI assistance.';
+  String get appDescription => 'Local QSO logging tool.';
 
   @override
   String get privacyPolicy => 'Privacy Policy';
@@ -981,8 +997,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Recording in progress. Audio will be transcribed and structured after you stop.';
 
   @override
-  String get streamingStoppedHint =>
-      'Recording stopped. Review the transcript above, then tap AI Process to structure it.';
+  String get streamingStoppedHint => 'Recording stopped';
 
   @override
   String aboutAppVersion(Object version) {

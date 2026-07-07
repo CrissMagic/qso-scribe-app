@@ -49,4 +49,27 @@ void main() {
     expect(cleared.audioPath, isNull);
     expect(cleared.rawTranscript, isNull);
   });
+
+  test('formats recognized transcript bubbles with speaker labels for AI', () {
+    final text = formatTranscriptSegmentsForStructuring([
+      const TranscriptSegment(
+        speaker: TranscriptSpeaker.other,
+        text: 'CQ CQ 这里是 VR2ABC',
+        isFinal: true,
+      ),
+      const TranscriptSegment(
+        speaker: TranscriptSpeaker.self,
+        text: 'BI1XYZ 回答你，信号五九',
+        isFinal: true,
+      ),
+      const TranscriptSegment(
+        speaker: TranscriptSpeaker.other,
+        text: '',
+        isFinal: true,
+        errorMessage: 'transcription_failed',
+      ),
+    ]);
+
+    expect(text, '[对方] CQ CQ 这里是 VR2ABC\n[我方] BI1XYZ 回答你，信号五九');
+  });
 }

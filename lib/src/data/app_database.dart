@@ -6,7 +6,7 @@ class AppDatabase {
   AppDatabase({Database? database}) : _database = database;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 7;
+  static const databaseVersion = 8;
 
   Database? _database;
 
@@ -58,6 +58,9 @@ class AppDatabase {
     }
     if (oldVersion < 7) {
       await _migrateToV7(db);
+    }
+    if (oldVersion < 8) {
+      await _migrateToV8(db);
     }
   }
 
@@ -114,6 +117,7 @@ CREATE TABLE IF NOT EXISTS qso_logs (
   antenna TEXT,
   power TEXT,
   audio_path TEXT,
+  original_audio_deleted INTEGER NOT NULL DEFAULT 0,
   raw_transcript TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -279,9 +283,7 @@ CREATE TABLE IF NOT EXISTS token_usage (
     final columns = await db.rawQuery('PRAGMA table_info(qso_logs)');
     final hasPower = columns.any((row) => row['name'] == 'power');
     if (!hasPower) {
-      await db.execute(
-        'ALTER TABLE qso_logs ADD COLUMN power TEXT',
-      );
+      await db.execute('ALTER TABLE qso_logs ADD COLUMN power TEXT');
     }
   }
 
@@ -302,6 +304,19 @@ CREATE TABLE IF NOT EXISTS token_usage (
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at)',
     );
+  }
+
+  // v8：记录原始音频曾存在但已按保留策略删除，用于复核页明确展示。
+  static Future<void> _migrateToV8(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(qso_logs)');
+    final hasOriginalAudioDeleted = columns.any(
+      (row) => row['name'] == 'original_audio_deleted',
+    );
+    if (!hasOriginalAudioDeleted) {
+      await db.execute(
+        'ALTER TABLE qso_logs ADD COLUMN original_audio_deleted INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   static Future<void> _migrateQsoLogsDateTimeNullable(
@@ -342,6 +357,7 @@ CREATE TABLE qso_logs (
   antenna TEXT,
   power TEXT,
   audio_path TEXT,
+  original_audio_deleted INTEGER NOT NULL DEFAULT 0,
   raw_transcript TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -368,6 +384,7 @@ INSERT INTO qso_logs (
   rig,
   antenna,
   audio_path,
+  original_audio_deleted,
   raw_transcript,
   created_at,
   updated_at
@@ -392,6 +409,7 @@ SELECT
   rig,
   antenna,
   audio_path,
+  0,
   raw_transcript,
   created_at,
   updated_at

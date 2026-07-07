@@ -121,6 +121,7 @@ class QsoRepository {
       'qso_logs',
       {
         'audio_path': null,
+        'original_audio_deleted': encodeBool(true),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
@@ -134,6 +135,7 @@ class QsoRepository {
       'qso_logs',
       {
         'audio_path': path,
+        'original_audio_deleted': encodeBool(false),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
@@ -171,6 +173,7 @@ class QsoRepository {
     final db = await _database.instance;
     await db.update('qso_logs', {
       'audio_path': null,
+      'original_audio_deleted': encodeBool(true),
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }, where: 'audio_path IS NOT NULL');
   }
@@ -199,44 +202,6 @@ class QsoRepository {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  Future<void> appendTranscriptSegments(
-    String qsoId,
-    List<TranscriptSegment> segments,
-  ) async {
-    final db = await _database.instance;
-    final now = DateTime.now().toUtc().toIso8601String();
-    await db.transaction((txn) async {
-      for (final segment in segments) {
-        await txn.insert('transcript_segments', {
-          'qso_id': qsoId,
-          'speaker': segment.speaker,
-          'text': segment.text,
-          'is_final': encodeBool(segment.isFinal),
-          'created_at': now,
-        });
-      }
-    });
-  }
-
-  Future<List<TranscriptSegment>> listTranscriptSegments(String qsoId) async {
-    final db = await _database.instance;
-    final rows = await db.query(
-      'transcript_segments',
-      where: 'qso_id = ?',
-      whereArgs: [qsoId],
-      orderBy: 'id ASC',
-    );
-    return rows
-        .map(
-          (row) => TranscriptSegment(
-            speaker: row['speaker'] as String,
-            text: row['text'] as String,
-            isFinal: decodeBool(row['is_final']),
-          ),
-        )
-        .toList();
-  }
-
   Map<String, Object?> _encodeQso(
     QsoDraft qso, {
     required String id,
@@ -263,6 +228,7 @@ class QsoRepository {
       'antenna': qso.antenna?.value.trim(),
       'power': qso.power?.value.trim(),
       'audio_path': qso.audioPath,
+      'original_audio_deleted': encodeBool(qso.originalAudioDeleted),
       'raw_transcript': qso.rawTranscript,
       'created_at': timestamp,
       'updated_at': timestamp,
@@ -299,6 +265,7 @@ class QsoRepository {
       antenna: _optionalField(row['antenna'] as String?),
       power: _optionalField(row['power'] as String?),
       audioPath: row['audio_path'] as String?,
+      originalAudioDeleted: decodeBool(row['original_audio_deleted']),
       rawTranscript: row['raw_transcript'] as String?,
     );
   }

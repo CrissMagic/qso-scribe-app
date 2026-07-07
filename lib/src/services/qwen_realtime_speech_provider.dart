@@ -45,23 +45,13 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
   String? lastDetectedLanguage;
 
   @override
-  SpeechProviderCapabilities get capabilities =>
-      const SpeechProviderCapabilities(
-        supportsStreaming: true,
-        supportsPartialResult: true,
-        supportsFinalSegment: true,
-        preferredSampleRate: 16000,
-        acceptedEncoding: 'pcm16',
-        requiresManualCommit: false,
-      );
-
-  @override
-  Stream<TranscriptSegment> get transcriptEvents => _transcriptController.stream;
+  Stream<TranscriptSegment> get transcriptEvents =>
+      _transcriptController.stream;
 
   String get _wsUrl => '$_qwenRealtimeWsUrl?model=$_modelName';
 
   @override
-  Future<void> startSession(SpeechSessionConfig config) async {
+  Future<void> startSession() async {
     _socket = await WebSocket.connect(
       _wsUrl,
       headers: {'Authorization': 'Bearer $_apiKey'},
@@ -120,11 +110,6 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
       'event_id': _nextEventId(),
       'audio': base64Encode(frame.bytes),
     });
-  }
-
-  @override
-  Future<void> commit() async {
-    // VAD 模式下由服务端自动断句，无需手动 commit。
   }
 
   @override
@@ -232,13 +217,13 @@ TranscriptSegment? parseTranscriptionEvent(Object? raw) {
       final text = raw['text']?.toString() ?? '';
       final stash = raw['stash']?.toString() ?? '';
       return TranscriptSegment(
-        speaker: 'RX',
+        speaker: TranscriptSpeaker.other,
         text: '$text$stash',
         isFinal: false,
       );
     case 'conversation.item.input_audio_transcription.completed':
       return TranscriptSegment(
-        speaker: 'RX',
+        speaker: TranscriptSpeaker.other,
         text: raw['transcript']?.toString() ?? '',
         isFinal: true,
       );

@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import '../data/app_database.dart';
 import '../data/export_service.dart';
@@ -23,10 +21,13 @@ import '../services/ai_provider_clients.dart';
 import '../services/app_update_service.dart';
 import '../services/heuristic_qso_structuring_service.dart';
 import '../services/local_audio_playback_service.dart';
+import '../services/qso_artifact_service.dart';
+import '../services/qso_intake_service.dart';
 import '../services/qso_processing_service.dart';
 import '../services/qwen_realtime_speech_provider.dart';
 import '../services/record_audio_capture_service.dart';
 import '../services/release_info_service.dart';
+import '../services/wav_audio.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) => AppDatabase());
 
@@ -354,6 +355,20 @@ final qsoProcessingServiceProvider = Provider<QsoProcessingService>(
   ),
 );
 
+final qsoArtifactServiceProvider = Provider<QsoArtifactService>(
+  (ref) => QsoArtifactService(),
+);
+
+final qsoIntakeServiceProvider = Provider<QsoIntakeService>((ref) {
+  final processing = ref.watch(qsoProcessingServiceProvider);
+  return QsoIntakeService(
+    createDraftFromText: processing.createDraftFromText,
+    createDraftFromAudio: processing.createDraftFromAudio,
+    loadSettings: () => ref.read(appSettingsProvider.future),
+    artifactService: ref.watch(qsoArtifactServiceProvider),
+  );
+});
+
 class AppSettingsNotifier extends AsyncNotifier<AppSettings> {
   @override
   Future<AppSettings> build() {
@@ -454,19 +469,13 @@ final checkUpdatesOnStartupProvider = Provider<bool>(
 final callsignProvider = Provider<String>(
   (ref) => ref
       .watch(appSettingsProvider)
-      .maybeWhen(
-        data: (settings) => settings.callsign,
-        orElse: () => '',
-      ),
+      .maybeWhen(data: (settings) => settings.callsign, orElse: () => ''),
 );
 
 final qthProvider = Provider<String>(
   (ref) => ref
       .watch(appSettingsProvider)
-      .maybeWhen(
-        data: (settings) => settings.qth,
-        orElse: () => '',
-      ),
+      .maybeWhen(data: (settings) => settings.qth, orElse: () => ''),
 );
 
 class StationEquipmentNotifier extends AsyncNotifier<List<StationEquipment>> {
@@ -515,10 +524,9 @@ class WelcomeShownNotifier extends AsyncNotifier<bool> {
   }
 }
 
-final welcomeShownProvider =
-    AsyncNotifierProvider<WelcomeShownNotifier, bool>(
-      WelcomeShownNotifier.new,
-    );
+final welcomeShownProvider = AsyncNotifierProvider<WelcomeShownNotifier, bool>(
+  WelcomeShownNotifier.new,
+);
 
 class RecordingSessionNotifier extends Notifier<RecordingSessionState> {
   Timer? _timer;
@@ -612,15 +620,21 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   SpeechTranscriptionProvider? _streamingProvider;
   StreamSubscription<AudioFrame>? _frameSub;
   StreamSubscription<TranscriptSegment>? _transcriptSub;
-  List<String> _finalTranscripts = [];
+  List<TranscriptSegment> _finalSegments = [];
+  final BytesBuilder _segmentAudio = BytesBuilder(copy: false);
+  int _segmentSampleRate = defaultPcmSampleRate;
+  int _segmentChannels = defaultPcmChannels;
+  int _segmentSeq = 0;
   String? _partial;
 
   void startQso({
     required TranscriptionMode mode,
     required DateTime startedAt,
   }) {
-    _finalTranscripts = [];
+    _finalSegments = [];
     _partial = null;
+    _segmentAudio.takeBytes();
+    _segmentSeq = 0;
     state = AsyncData(
       QsoCaptureState(currentDraft: _emptyDraft(dateTime: startedAt)),
     );
@@ -640,26 +654,24 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         return;
       }
       _streamingProvider = provider;
-      await provider.startSession(
-        const SpeechSessionConfig(
-          providerId: '',
-          modelId: '',
-          mode: TranscriptionMode.streaming,
-        ),
-      );
+      await provider.startSession();
       _frameSub = ref
           .read(audioCaptureServiceProvider)
           .frames
-          .listen((frame) => unawaited(provider.sendAudioFrame(frame)));
+          .listen((frame) => _onStreamingAudioFrame(frame, provider));
       _transcriptSub = provider.transcriptEvents.listen(
         _onTranscript,
         onError: (Object error) {
-          _updateCapture(
-            (state) => state.copyWith(warningMessage: 'no_streaming_transcript'),
-          );
+          _addUnrecognizedSegment(error.toString());
+          if (!_finalSegments.any((segment) => segment.hasText)) {
+            _updateCapture(
+              (state) =>
+                  state.copyWith(warningMessage: 'no_streaming_transcript'),
+            );
+          }
         },
       );
-      _updateCapture((state) => state.copyWith(warningMessage: null));
+      _updateCapture((state) => state.copyWith(clearWarning: true));
     } catch (_) {
       await _stopStreaming();
       _updateCapture(
@@ -669,8 +681,9 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   }
 
   Future<SpeechTranscriptionProvider?> _resolveStreamingProvider() async {
-    final assignments =
-        await ref.read(modelAssignmentRepositoryProvider).listAssignments();
+    final assignments = await ref
+        .read(modelAssignmentRepositoryProvider)
+        .listAssignments();
     String? providerId;
     String? modelId;
     for (final assignment in assignments) {
@@ -693,8 +706,9 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     if (providerId == null || modelId == null) {
       return null;
     }
-    final connection =
-        await ref.read(providerRepositoryProvider).findConnection(providerId);
+    final connection = await ref
+        .read(providerRepositoryProvider)
+        .findConnection(providerId);
     if (connection == null ||
         connection.apiKey == null ||
         connection.apiKey!.isEmpty) {
@@ -725,22 +739,96 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     );
   }
 
+  void _onStreamingAudioFrame(
+    AudioFrame frame,
+    SpeechTranscriptionProvider provider,
+  ) {
+    _segmentSampleRate = frame.sampleRate;
+    _segmentChannels = frame.channels;
+    _segmentAudio.add(frame.bytes);
+    unawaited(provider.sendAudioFrame(frame));
+  }
+
   void _onTranscript(TranscriptSegment segment) {
     if (segment.isFinal) {
-      if (segment.text.trim().isNotEmpty) {
-        _finalTranscripts.add(segment.text.trim());
-      }
+      _finalSegments = [..._finalSegments, _finalizeTranscriptSegment(segment)];
       _partial = null;
     } else {
       _partial = segment.text;
     }
-    final segments = <TranscriptSegment>[
-      for (final text in _finalTranscripts)
-        TranscriptSegment(speaker: 'RX', text: text, isFinal: true),
-      if (_partial != null && _partial!.trim().isNotEmpty)
-        TranscriptSegment(speaker: 'RX', text: _partial!, isFinal: false),
+    _publishTranscriptSegments();
+  }
+
+  void _addUnrecognizedSegment([String? errorMessage]) {
+    _finalSegments = [
+      ..._finalSegments,
+      _finalizeTranscriptSegment(
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.other,
+          text: '',
+          isFinal: true,
+          errorMessage: errorMessage,
+        ),
+      ),
     ];
-    _updateCapture((state) => state.copyWith(transcriptSegments: segments));
+    _partial = null;
+    _publishTranscriptSegments();
+  }
+
+  // ponytail: ASR final events are v1's approximate audio boundaries;
+  // persisted bubble timelines can replace this when history replay matters.
+  TranscriptSegment _finalizeTranscriptSegment(TranscriptSegment segment) {
+    final audio = _takeSegmentAudio();
+    final id = 'stream_${_segmentSeq++}';
+    return segment.copyWith(id: id, duration: audio.duration);
+  }
+
+  _CapturedSegmentAudio _takeSegmentAudio() {
+    final bytes = _segmentAudio.takeBytes();
+    return _CapturedSegmentAudio(
+      bytes: bytes,
+      sampleRate: _segmentSampleRate,
+      channels: _segmentChannels,
+    );
+  }
+
+  void updateTranscriptSpeaker(int index, TranscriptSpeaker speaker) {
+    if (index < 0 || index >= _finalSegments.length) {
+      return;
+    }
+    _finalSegments = [
+      for (var i = 0; i < _finalSegments.length; i += 1)
+        if (i == index)
+          _finalSegments[i].copyWith(speaker: speaker)
+        else
+          _finalSegments[i],
+    ];
+    _publishTranscriptSegments(updateDraftTranscript: true);
+  }
+
+  void _publishTranscriptSegments({bool updateDraftTranscript = false}) {
+    final visibleSegments = [
+      ..._finalSegments,
+      if (_partial != null && _partial!.trim().isNotEmpty)
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.other,
+          text: _partial!,
+          isFinal: false,
+        ),
+    ];
+    _updateCapture((state) {
+      if (!updateDraftTranscript || !state.pendingStructuring) {
+        return state.copyWith(transcriptSegments: visibleSegments);
+      }
+      final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
+      final draft = rawText.trim().isEmpty
+          ? state.currentDraft.copyWith(clearRawTranscript: true)
+          : state.currentDraft.copyWith(rawTranscript: rawText);
+      return state.copyWith(
+        currentDraft: draft,
+        transcriptSegments: visibleSegments,
+      );
+    });
   }
 
   Future<void> _stopStreaming() async {
@@ -756,34 +844,45 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   }
 
   /// 停止流式转写但保留转写文本，等待用户点击 AI 处理再结构化。
-  /// 不清空 [_finalTranscripts]，设置 pendingStructuring 标志。
+  /// 不清空 [_finalSegments]，设置 pendingStructuring 标志。
   Future<QsoDraft> stopQsoStreaming({
     required String? audioPath,
     required DateTime? startedAt,
   }) async {
-    final current = await future;
+    await future;
     await _stopStreaming();
-    final rawText = <String>[
-      ..._finalTranscripts,
-      if (_partial != null && _partial!.trim().isNotEmpty) _partial!,
-    ].join('\n');
-    // 将最终 partial 合并进 finalTranscripts，以便 UI 展示完整文本
     if (_partial != null && _partial!.trim().isNotEmpty) {
-      _finalTranscripts.add(_partial!.trim());
+      _finalSegments = [
+        ..._finalSegments,
+        _finalizeTranscriptSegment(
+          TranscriptSegment(
+            speaker: TranscriptSpeaker.other,
+            text: _partial!.trim(),
+            isFinal: true,
+          ),
+        ),
+      ];
       _partial = null;
-      _updateCapture((s) => s.copyWith(transcriptSegments: [
-        for (final text in _finalTranscripts)
-          TranscriptSegment(speaker: 'RX', text: text, isFinal: true),
-      ]));
+      _publishTranscriptSegments();
     }
-    final draft = current.currentDraft.copyWith(
+    if (_segmentAudio.length > 0) {
+      _addUnrecognizedSegment();
+    }
+    final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
+    final latest = await future;
+    var draft = latest.currentDraft.copyWith(
       audioPath: audioPath,
       rawTranscript: rawText.trim().isEmpty ? null : rawText,
-      dateTime: QsoField(value: startedAt ?? current.currentDraft.dateTime.value),
+      dateTime: QsoField(
+        value: startedAt ?? latest.currentDraft.dateTime.value,
+      ),
       status: LogStatus.draft,
     );
+    draft = await ref
+        .read(qsoIntakeServiceProvider)
+        .applyRecognitionRetention(draft);
     state = AsyncData(
-      current.copyWith(
+      latest.copyWith(
         currentDraft: draft,
         pendingStructuring: rawText.trim().isNotEmpty,
       ),
@@ -794,11 +893,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   /// 将当前保留的流式转写文本结构化为 QSO 草稿。
   Future<QsoDraft> structureCapturedTranscript() async {
     final current = await future;
-    final rawText = <String>[
-      ..._finalTranscripts,
-      if (_partial != null && _partial!.trim().isNotEmpty) _partial!,
-    ].join('\n');
-    _finalTranscripts = [];
+    final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
     _partial = null;
 
     if (rawText.trim().isEmpty) {
@@ -818,28 +913,25 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
 
     final audioPath = current.currentDraft.audioPath;
     final dateTime = current.currentDraft.dateTime.value;
-    QsoDraft draft;
-    try {
-      draft = await ref.read(qsoProcessingServiceProvider).createDraftFromText(
-        rawText,
-        audioPath: audioPath,
-        dateTime: dateTime,
-      );
-    } catch (_) {
-      draft = current.currentDraft.copyWith(
-        rawTranscript: rawText,
-        status: LogStatus.needsReview,
-      );
-    }
-    final retainedDraft = await _applyRecognitionRetention(draft);
+    final draft = await ref
+        .read(qsoIntakeServiceProvider)
+        .reviewDraftFromText(
+          rawText,
+          audioPath: audioPath,
+          dateTime: dateTime,
+          originalAudioDeleted: current.currentDraft.originalAudioDeleted,
+        );
+    _finalSegments = [];
+    _segmentAudio.takeBytes();
     state = AsyncData(
       current.copyWith(
-        currentDraft: retainedDraft,
+        currentDraft: draft,
+        transcriptSegments: const [],
         pendingStructuring: false,
         clearWarning: true,
       ),
     );
-    return retainedDraft;
+    return draft;
   }
 
   void _updateCapture(QsoCaptureState Function(QsoCaptureState) updater) {
@@ -866,20 +958,16 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
 
     if (mode == TranscriptionMode.afterQso) {
       try {
-        var draft = await ref
-            .read(qsoProcessingServiceProvider)
-            .createDraftFromAudio(
-              audioPath: audioPath,
-              qsoStartedAt: startedAt,
-            );
-        draft = await _applyRecognitionRetention(draft);
+        final draft = await ref
+            .read(qsoIntakeServiceProvider)
+            .reviewDraftFromAudio(audioPath: audioPath, startedAt: startedAt);
         state = AsyncData(
           QsoCaptureState(
             currentDraft: draft,
             transcriptSegments: [
               if (draft.rawTranscript?.isNotEmpty ?? false)
                 TranscriptSegment(
-                  speaker: 'RX',
+                  speaker: TranscriptSpeaker.other,
                   text: draft.rawTranscript!,
                   isFinal: true,
                 ),
@@ -888,12 +976,8 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         );
         return draft;
       } catch (error) {
-        final rawTranscript = error is QsoStructuringException
-            ? error.rawTranscript
-            : null;
         final draft = current.currentDraft.copyWith(
           audioPath: audioPath,
-          rawTranscript: rawTranscript,
           status: LogStatus.failed,
           errorMessage: error.toString(),
         );
@@ -926,24 +1010,35 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       status: LogStatus.draft,
     );
   }
-
-  Future<QsoDraft> _applyRecognitionRetention(QsoDraft draft) async {
-    final settings = await ref.read(appSettingsProvider.future);
-    final audioPath = draft.audioPath;
-    if (settings.audioRetentionPolicy ==
-            AudioRetentionPolicy.deleteAfterRecognition &&
-        audioPath != null) {
-      await _deleteOwnedAudioFileIfExists(audioPath);
-      return draft.copyWith(clearAudioPath: true);
-    }
-    return draft;
-  }
 }
 
 final qsoCaptureProvider =
     AsyncNotifierProvider<QsoCaptureNotifier, QsoCaptureState>(
       QsoCaptureNotifier.new,
     );
+
+class _CapturedSegmentAudio {
+  const _CapturedSegmentAudio({
+    required this.bytes,
+    required this.sampleRate,
+    required this.channels,
+  });
+
+  final Uint8List bytes;
+  final int sampleRate;
+  final int channels;
+
+  Duration? get duration {
+    if (bytes.isEmpty) {
+      return null;
+    }
+    final bytesPerSecond = sampleRate * channels * 2;
+    return Duration(
+      microseconds:
+          bytes.length * Duration.microsecondsPerSecond ~/ bytesPerSecond,
+    );
+  }
+}
 
 class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
   @override
@@ -966,8 +1061,13 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
         (qso.status == LogStatus.confirmed ||
             qso.status == LogStatus.exported) &&
         qso.audioPath != null) {
-      await _deleteOwnedFileIfExists(qso.audioPath!);
-      qsoToSave = qso.copyWith(clearAudioPath: true);
+      await ref
+          .read(qsoArtifactServiceProvider)
+          .deleteOwnedAudioFileIfExists(qso.audioPath!);
+      qsoToSave = qso.copyWith(
+        clearAudioPath: true,
+        originalAudioDeleted: true,
+      );
     }
     final id = await ref.read(qsoRepositoryProvider).saveQso(qsoToSave);
     await refresh();
@@ -984,7 +1084,9 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
     required String? qsoId,
     required String path,
   }) async {
-    final trashFiles = await _trashOwnedAudioFileIfExists(path);
+    final trashFiles = await ref
+        .read(qsoArtifactServiceProvider)
+        .trashOwnedAudioFileIfExists(path);
     if (qsoId != null) {
       await ref.read(qsoRepositoryProvider).clearAudioPath(qsoId);
       await refresh();
@@ -998,7 +1100,7 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
     required String path,
     required List<MapEntry<String, String>> trashFiles,
   }) async {
-    await _restoreFromTrash(trashFiles);
+    await ref.read(qsoArtifactServiceProvider).restoreFromTrash(trashFiles);
     if (qsoId != null) {
       await ref.read(qsoRepositoryProvider).setAudioPath(qsoId, path);
       await refresh();
@@ -1030,7 +1132,9 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
     for (final log in logs) {
       final audioPath = log.audioPath;
       if (audioPath != null) {
-        await _deleteOwnedFileIfExists(audioPath);
+        await ref
+            .read(qsoArtifactServiceProvider)
+            .deleteOwnedAudioFileIfExists(audioPath);
       }
     }
     await ref.read(qsoRepositoryProvider).clearAllAudioPaths();
@@ -1044,10 +1148,6 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
     await refresh();
     ref.invalidate(importJobsProvider);
     ref.invalidate(localDataSummaryProvider);
-  }
-
-  Future<void> _deleteOwnedFileIfExists(String path) async {
-    await _deleteOwnedAudioFileIfExists(path);
   }
 }
 
@@ -1095,8 +1195,8 @@ class ImportJobsNotifier extends AsyncNotifier<List<ImportJob>> {
     await repository.updateJob(id: job.id, status: ImportJobStatus.processing);
     try {
       final draft = await ref
-          .read(qsoProcessingServiceProvider)
-          .createDraftFromText(rawText);
+          .read(qsoIntakeServiceProvider)
+          .reviewDraftFromText(rawText);
       await repository.updateJob(id: job.id, status: ImportJobStatus.completed);
       state = await AsyncValue.guard(repository.listJobs);
       return ImportDraft(jobId: job.id, draft: draft);
@@ -1113,87 +1213,39 @@ class ImportJobsNotifier extends AsyncNotifier<List<ImportJob>> {
 
   Future<ImportDraft> prepareAudioImport(String sourcePath) async {
     final repository = ref.read(importRepositoryProvider);
-    final retainedPath = await _copyAudioImportToAppStorage(sourcePath);
+    final retainedPath = await ref
+        .read(qsoArtifactServiceProvider)
+        .copyAudioImportToAppStorage(sourcePath);
     final job = await repository.createJob(
       sourceType: ImportSourceType.audio,
       sourcePath: retainedPath,
     );
     await repository.updateJob(id: job.id, status: ImportJobStatus.processing);
     try {
-      var draft = await ref
-          .read(qsoProcessingServiceProvider)
-          .createDraftFromAudio(audioPath: retainedPath);
-      final settings = await ref.read(appSettingsProvider.future);
-      if (settings.audioRetentionPolicy ==
-              AudioRetentionPolicy.deleteAfterRecognition &&
-          draft.audioPath != null) {
-        await _deleteOwnedAudioFileIfExists(draft.audioPath!);
-        draft = draft.copyWith(clearAudioPath: true);
-      }
+      final draft = await ref
+          .read(qsoIntakeServiceProvider)
+          .reviewDraftFromAudio(audioPath: retainedPath);
       await repository.updateJob(id: job.id, status: ImportJobStatus.completed);
       state = await AsyncValue.guard(repository.listJobs);
       return ImportDraft(jobId: job.id, draft: draft);
     } catch (error) {
-      final rawTranscript = error is QsoStructuringException
-          ? error.rawTranscript
-          : null;
       await repository.updateJob(
         id: job.id,
         status: ImportJobStatus.failed,
         errorMessage: error.toString(),
       );
       state = await AsyncValue.guard(repository.listJobs);
-      if (rawTranscript != null) {
-        return ImportDraft(
-          jobId: job.id,
-          draft: _manualAudioReviewDraft(
-            audioPath: retainedPath,
-            rawTranscript: rawTranscript,
-          ),
-        );
-      }
       return ImportDraft(
         jobId: job.id,
-        draft: _manualAudioReviewDraft(audioPath: retainedPath),
+        draft: ref
+            .read(qsoIntakeServiceProvider)
+            .manualReviewDraft(
+              audioPath: retainedPath,
+              status: LogStatus.failed,
+              errorMessage: error.toString(),
+            ),
       );
     }
-  }
-
-  QsoDraft _manualAudioReviewDraft({
-    required String audioPath,
-    String? rawTranscript,
-  }) {
-    return QsoDraft(
-      callsign: const QsoField(value: '', confidence: 0.2),
-      dateTime: const QsoField<DateTime?>(value: null),
-      band: const QsoField(value: '', confidence: 0.2),
-      frequency: const QsoField(value: '', confidence: 0.2),
-      mode: const QsoField(value: '', confidence: 0.2),
-      sentRst: const QsoField(value: '', confidence: 0.2),
-      receivedRst: const QsoField(value: '', confidence: 0.2),
-      status: LogStatus.failed,
-      audioPath: audioPath,
-      rawTranscript: rawTranscript,
-    );
-  }
-
-  Future<String> _copyAudioImportToAppStorage(String sourcePath) async {
-    final source = File(sourcePath);
-    if (!source.existsSync()) {
-      throw StateError('audio_file_missing');
-    }
-    final appDir = await getApplicationDocumentsDirectory();
-    final audioDir = Directory(p.join(appDir.path, 'imports', 'audio'));
-    if (!audioDir.existsSync()) {
-      await audioDir.create(recursive: true);
-    }
-    final extension = p.extension(source.path);
-    final originalName = p.basenameWithoutExtension(source.path);
-    final timestamp = DateTime.now().toUtc().millisecondsSinceEpoch;
-    final fileName =
-        '${timestamp}_$originalName${extension.isEmpty ? '.audio' : extension}';
-    final retainedPath = p.join(audioDir.path, fileName);
-    return source.copy(retainedPath).then((file) => file.path);
   }
 
   Future<void> attachGeneratedQso({
@@ -1233,74 +1285,11 @@ final importJobsProvider =
       ImportJobsNotifier.new,
     );
 
-Future<List<MapEntry<String, String>>> _trashOwnedAudioFileIfExists(
-  String path,
-) async {
-  final appDir = await getApplicationDocumentsDirectory();
-  final appRoot = p.normalize(appDir.path);
-  final trashDir = Directory(p.join(appRoot, '.trash'));
-  final candidates = [
-    File(path),
-    if (p.extension(path).toLowerCase() == '.pcm')
-      File(p.setExtension(path, '.wav')),
-  ];
-  final trashFiles = <MapEntry<String, String>>[];
-  for (final file in candidates) {
-    if (!file.existsSync()) continue;
-    final filePath = p.normalize(file.absolute.path);
-    if (filePath != appRoot && !p.isWithin(appRoot, filePath)) continue;
-    if (!trashDir.existsSync()) {
-      await trashDir.create(recursive: true);
-    }
-    final stamp = DateTime.now().microsecondsSinceEpoch;
-    final dest = p.join(trashDir.path, '${stamp}_${p.basename(filePath)}');
-    await file.rename(dest);
-    trashFiles.add(MapEntry(dest, filePath));
-  }
-  return trashFiles;
-}
-
-Future<void> _restoreFromTrash(
-  List<MapEntry<String, String>> trashFiles,
-) async {
-  if (trashFiles.isEmpty) return;
-  final appDir = await getApplicationDocumentsDirectory();
-  final appRoot = p.normalize(appDir.path);
-  for (final file in trashFiles) {
-    final src = File(file.key);
-    if (!src.existsSync()) continue;
-    final originalPath = p.normalize(file.value);
-    if (originalPath != appRoot && !p.isWithin(appRoot, originalPath)) continue;
-    await Directory(p.dirname(originalPath)).create(recursive: true);
-    await src.rename(originalPath);
-  }
-}
-
-Future<void> _deleteOwnedAudioFileIfExists(String path) async {
-  final appDir = await getApplicationDocumentsDirectory();
-  final appRoot = p.normalize(appDir.path);
-  final candidates = [
-    File(path),
-    if (p.extension(path).toLowerCase() == '.pcm')
-      File(p.setExtension(path, '.wav')),
-  ];
-
-  for (final file in candidates) {
-    if (!file.existsSync()) {
-      continue;
-    }
-    final filePath = p.normalize(file.absolute.path);
-    if (filePath == appRoot || p.isWithin(appRoot, filePath)) {
-      await file.delete();
-    }
-  }
-}
-
 final modelOptionsProvider = FutureProvider<List<AiModelOption>>(
   (ref) => ref.watch(modelRepositoryProvider).listModels(),
 );
 
 final tokenUsageListProvider =
     FutureProvider.autoDispose<List<TokenUsageRecord>>(
-  (ref) => ref.watch(tokenUsageRepositoryProvider).listRecords(),
-);
+      (ref) => ref.watch(tokenUsageRepositoryProvider).listRecords(),
+    );
