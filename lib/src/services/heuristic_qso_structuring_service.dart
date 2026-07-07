@@ -1,7 +1,6 @@
 import '../domain/app_models.dart';
-import '../domain/service_contracts.dart';
 
-class HeuristicQsoStructuringService implements QsoStructuringService {
+class HeuristicQsoStructuringService {
   const HeuristicQsoStructuringService();
 
   QsoDraft createDraftFromText({
@@ -40,33 +39,6 @@ class HeuristicQsoStructuringService implements QsoStructuringService {
       status: status,
       audioPath: audioPath,
       rawTranscript: rawText,
-    );
-  }
-
-  @override
-  Future<QsoDraftPatch> applyTranscript(
-    TranscriptSegment segment,
-    QsoDraft currentDraft,
-  ) async {
-    final patchDraft = createDraftFromText(
-      rawText: segment.text,
-      audioPath: currentDraft.audioPath,
-      dateTime: currentDraft.dateTime.value,
-      status: currentDraft.status,
-    );
-    return QsoDraftPatch(
-      sourceSegment: segment,
-      updatedFields: {
-        if (patchDraft.callsign.value.isNotEmpty)
-          'callsign': patchDraft.callsign,
-        if (patchDraft.band.value.isNotEmpty) 'band': patchDraft.band,
-        if (patchDraft.frequency.value.isNotEmpty)
-          'frequency': patchDraft.frequency,
-        if (patchDraft.mode.value.isNotEmpty) 'mode': patchDraft.mode,
-        if (patchDraft.sentRst.value.isNotEmpty) 'sentRst': patchDraft.sentRst,
-        if (patchDraft.receivedRst.value.isNotEmpty)
-          'receivedRst': patchDraft.receivedRst,
-      },
     );
   }
 

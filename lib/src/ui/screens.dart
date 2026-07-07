@@ -315,6 +315,9 @@ class _MainShellState extends ConsumerState<MainShell> {
       }
 
       final info = await PackageInfo.fromPlatform();
+      if (_isTestBuild(info)) {
+        return;
+      }
       final currentVersion = packageVersionWithBuild(
         info.version,
         info.buildNumber,
@@ -586,22 +589,9 @@ class _StreamingTab extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 16),
-        if (transcript.isNotEmpty)
-          _TranscriptCard(segments: transcript)
-        else
-          _PlaceholderCard(
-            title: l10n.liveTranscript,
-            text: l10n.noStreamingTranscript,
-            icon: Icons.audio_file,
-          ),
+        _TranscriptCard(segments: transcript),
         const SizedBox(height: 16),
         if (pending) ...[
-          _PlaceholderCard(
-            title: l10n.streamingMode,
-            text: l10n.streamingStoppedHint,
-            icon: Icons.task_alt,
-          ),
-          const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: () async {
               final generatedDraft = await ref
@@ -1195,8 +1185,6 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(l10n.exportDesc),
-          const SizedBox(height: 16),
           _CardSection(
             title: l10n.format,
             children: [
@@ -1648,16 +1636,16 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
             label: Text(l10n.checkUpdate),
           ),
           const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            secondary: const Icon(Icons.update),
-            title: Text(l10n.checkUpdatesOnStartup),
-            subtitle: Text(l10n.checkUpdatesOnStartupDesc),
-            value: checkUpdatesOnStartup,
-            onChanged: (value) => ref
-                .read(appSettingsProvider.notifier)
-                .setCheckUpdatesOnStartup(value),
-          ),
+          if (_packageInfo != null && !_isTestBuild(_packageInfo!))
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.update),
+              title: Text(l10n.checkUpdatesOnStartup),
+              value: checkUpdatesOnStartup,
+              onChanged: (value) => ref
+                  .read(appSettingsProvider.notifier)
+                  .setCheckUpdatesOnStartup(value),
+            ),
           const SizedBox(height: 24),
           ..._resultWidgets(context, updateState),
         ],
@@ -1749,15 +1737,18 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const SizedBox(height: 12),
-      Text(l10n.updateNotes, style: Theme.of(context).textTheme.labelLarge),
-      const SizedBox(height: 6),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: MarkdownBody(
-            data: release.notes.isEmpty ? release.title : release.notes,
+      ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        title: Text(l10n.updateNotes),
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MarkdownBody(
+              data: release.notes.isEmpty ? release.title : release.notes,
+            ),
           ),
-        ),
+        ],
       ),
       const SizedBox(height: 16),
     ];
@@ -1778,44 +1769,21 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
         updateState.status != AppUpdateStatus.installing;
 
     return [
-      _CardSection(
-        title: l10n.updatePackage,
-        children: [
-          _versionRow(l10n.updateAsset, release.apkAsset.name),
-          if (release.apkAsset.size != null)
-            _versionRow(l10n.updateSize, _formatBytes(release.apkAsset.size!)),
-          if (release.apkAsset.sha256Digest != null)
-            _versionRow(
-              l10n.updateDigest,
-              release.apkAsset.sha256Digest!.substring(0, 12),
-            ),
-          if (downloading) ...[
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: updateState.progress),
-            const SizedBox(height: 8),
-            Text(
-              '${l10n.downloadProgress}: '
-              '${_formatBytes(updateState.receivedBytes)} / '
-              '${updateState.totalBytes == null ? '-' : _formatBytes(updateState.totalBytes!)}',
-            ),
-            const SizedBox(height: 8),
-            _UpdateStatusRow(
-              icon: Icons.downloading,
-              text: updateState.openInstallerWhenDone
-                  ? l10n.downloadThenOpenInstaller
-                  : l10n.backgroundDownloading,
-            ),
-          ],
-          if (downloaded) ...[
-            const SizedBox(height: 12),
-            _UpdateStatusRow(
-              icon: Icons.check_circle_outline,
-              text: l10n.updateDownloaded,
-            ),
-          ],
-        ],
+      _UpdateStatusRow(
+        icon: downloaded ? Icons.check_circle_outline : Icons.inventory_2,
+        text: _packageSummary(context, release),
       ),
       const SizedBox(height: 12),
+      if (downloading) ...[
+        LinearProgressIndicator(value: updateState.progress),
+        const SizedBox(height: 8),
+        Text(
+          '${l10n.downloadProgress}: '
+          '${_formatBytes(updateState.receivedBytes)} / '
+          '${updateState.totalBytes == null ? '-' : _formatBytes(updateState.totalBytes!)}',
+        ),
+        const SizedBox(height: 12),
+      ],
       if (!downloading && !downloaded) ...[
         FilledButton.icon(
           onPressed: () => unawaited(
@@ -1826,16 +1794,6 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
           icon: const Icon(Icons.system_update_alt),
           label: Text(l10n.downloadAndOpenInstaller),
         ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: () => unawaited(
-            ref
-                .read(appUpdateProvider.notifier)
-                .downloadLatest(openInstallerWhenDone: false),
-          ),
-          icon: const Icon(Icons.download_for_offline_outlined),
-          label: Text(l10n.backgroundDownload),
-        ),
       ],
       if (downloaded)
         FilledButton.icon(
@@ -1845,12 +1803,20 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
           label: Text(l10n.openInstaller),
         ),
       const SizedBox(height: 8),
-      OutlinedButton.icon(
+      TextButton.icon(
         onPressed: () => _openUrl(release.htmlUrl),
         icon: const Icon(Icons.open_in_new),
         label: Text(l10n.goToDownload),
       ),
     ];
+  }
+
+  String _packageSummary(BuildContext context, AppRelease release) {
+    final size = release.apkAsset.size;
+    if (size == null) {
+      return context.l10n.updatePackage;
+    }
+    return '${context.l10n.updatePackage} · ${_formatBytes(size)}';
   }
 
   String _updateErrorLabel(BuildContext context, String? code) {
@@ -1882,6 +1848,11 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(1)} MB';
   }
+}
+
+bool _isTestBuild(PackageInfo info) {
+  return info.packageName.endsWith('.debug') ||
+      info.version.toLowerCase().contains('debug');
 }
 
 class _UpdateStatusRow extends StatelessWidget {
@@ -1926,8 +1897,6 @@ class LocalDataManagementScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(l10n.localDataManagementDesc),
-          const SizedBox(height: 16),
           ...summaryState.when(
             data: (summary) => [
               _CardSection(
@@ -2039,8 +2008,6 @@ class _StationEquipmentScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(l10n.stationEquipmentDesc),
-          const SizedBox(height: 16),
           ...equipmentState.when(
             data: (equipment) => [
               if (equipment.isEmpty)
@@ -2325,8 +2292,6 @@ class _CallsignSettingsScreenState
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(l10n.callsignSetupDesc),
-          const SizedBox(height: 16),
           TextField(
             controller: _callsignController,
             textCapitalization: TextCapitalization.characters,
@@ -2754,10 +2719,6 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Text(l10n.appDescription),
-          const SizedBox(height: 16),
-          const Divider(),
-          const SizedBox(height: 8),
           ExpansionTile(
             leading: const Icon(Icons.privacy_tip_outlined),
             title: Text(l10n.privacyPolicy),
@@ -3625,6 +3586,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   bool _bandSuggested = false;
   String? _frequencyError;
   late String? _audioPath;
+  late bool _originalAudioDeleted;
   late String? _rawTranscript;
   bool _isAudioPlaying = false;
   String? _audioPlaybackError;
@@ -3652,6 +3614,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _band = draft.band.value.trim().isEmpty ? null : draft.band.value.trim();
     _mode = draft.mode.value.trim().isEmpty ? null : draft.mode.value.trim();
     _audioPath = draft.audioPath;
+    _originalAudioDeleted = draft.originalAudioDeleted;
     _rawTranscript = draft.rawTranscript;
   }
 
@@ -3748,6 +3711,15 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   ],
                 ),
               ),
+            ),
+          ],
+          if (status != LogStatus.failed &&
+              widget.draft.errorMessage != null) ...[
+            const SizedBox(height: 12),
+            _PlaceholderCard(
+              title: l10n.needsReview,
+              text: _errorLabel(context, widget.draft.errorMessage!),
+              icon: Icons.info_outline,
             ),
           ],
           const SizedBox(height: 16),
@@ -3903,7 +3875,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               _RetainedAudioCard(
                 title: l10n.audioLog,
                 path: _audioPath,
-                missingText: l10n.noAudioFile,
+                missingText: _originalAudioDeleted
+                    ? l10n.originalAudioDeleted
+                    : l10n.noAudioFile,
                 isPlaying: _isAudioPlaying,
                 errorText: _audioPlaybackError,
                 playLabel: l10n.playAudio,
@@ -4017,6 +3991,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       antenna: _optionalEditedField(_antennaController.text),
       power: _optionalEditedField(_powerController.text),
       audioPath: _audioPath,
+      originalAudioDeleted: _originalAudioDeleted,
       rawTranscript: _rawTranscript,
     );
   }
@@ -4054,6 +4029,8 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
         _mode = draft.mode.value.trim().isEmpty
             ? null
             : draft.mode.value.trim();
+        _audioPath = draft.audioPath;
+        _originalAudioDeleted = draft.originalAudioDeleted;
         _rawTranscript = draft.rawTranscript;
       });
     } catch (_) {
@@ -4084,6 +4061,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     }
     setState(() {
       _audioPath = null;
+      _originalAudioDeleted = true;
       _isAudioPlaying = false;
       _audioPlaybackError = null;
     });
@@ -4101,7 +4079,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   trashFiles: trashFiles,
                 );
             if (mounted) {
-              setState(() => _audioPath = audioPath);
+              setState(() {
+                _audioPath = audioPath;
+                _originalAudioDeleted = false;
+              });
             }
           },
         ),
@@ -4464,34 +4445,266 @@ class _ScopeGridPainter extends CustomPainter {
       oldDelegate.traceColor != traceColor;
 }
 
-class _TranscriptCard extends StatelessWidget {
+class _TranscriptCard extends ConsumerWidget {
   const _TranscriptCard({required this.segments});
 
   final List<TranscriptSegment> segments;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return _CardSection(
       title: context.l10n.liveTranscript,
       children: [
-        for (final segment in segments)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: RichText(
-              text: TextSpan(
-                style: DefaultTextStyle.of(context).style,
-                children: [
-                  TextSpan(
-                    text: '${segment.speaker}: ',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextSpan(text: segment.text),
-                ],
+        if (segments.isEmpty)
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
+                child: Icon(
+                  Icons.person,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      context.l10n.noStreamingTranscript,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        for (var index = 0; index < segments.length; index += 1)
+          _TranscriptBubble(
+            key: ValueKey(segments[index].id ?? 'partial_$index'),
+            segment: segments[index],
+            index: index,
           ),
       ],
     );
+  }
+}
+
+class _TranscriptBubble extends ConsumerStatefulWidget {
+  const _TranscriptBubble({
+    super.key,
+    required this.segment,
+    required this.index,
+  });
+
+  final TranscriptSegment segment;
+  final int index;
+
+  @override
+  ConsumerState<_TranscriptBubble> createState() => _TranscriptBubbleState();
+}
+
+class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
+  bool _isPlaying = false;
+  String? _playbackError;
+
+  @override
+  Widget build(BuildContext context) {
+    final segment = widget.segment;
+    final isMine = segment.speaker == TranscriptSpeaker.self;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final bubbleColor = isMine
+        ? colors.primaryContainer
+        : colors.surfaceContainerHighest;
+    final textColor = isMine
+        ? colors.onPrimaryContainer
+        : colors.onSurfaceVariant;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: isMine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isMine) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: colors.surfaceContainerHighest,
+              child: Icon(
+                Icons.person,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: bubbleColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: colors.outlineVariant),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: isMine
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ActionChip(
+                          avatar: const Icon(Icons.swap_horiz, size: 16),
+                          label: Text(
+                            _transcriptSpeakerLabel(context, segment.speaker),
+                          ),
+                          onPressed: segment.isFinal ? _toggleSpeaker : null,
+                          tooltip: segment.speaker == TranscriptSpeaker.self
+                              ? context.l10n.switchToOtherStation
+                              : context.l10n.switchToMyStation,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatSpeechDuration(segment.duration),
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: textColor,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: _isPlaying
+                              ? context.l10n.stopAudio
+                              : context.l10n.playAudio,
+                          onPressed: segment.audioPath == null
+                              ? null
+                              : _togglePlayback,
+                          icon: Icon(_isPlaying ? Icons.stop : Icons.volume_up),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            segment.hasText
+                                ? segment.text
+                                : context.l10n.unrecognizedSpeech,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: textColor,
+                              fontStyle: segment.hasText
+                                  ? null
+                                  : FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (segment.errorMessage != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _errorLabel(context, segment.errorMessage!),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.error,
+                        ),
+                      ),
+                    ],
+                    if (_playbackError != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _playbackError!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.error,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (isMine) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: colors.primaryContainer,
+              child: Icon(
+                Icons.person,
+                size: 20,
+                color: colors.onPrimaryContainer,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _toggleSpeaker() {
+    final next = widget.segment.speaker == TranscriptSpeaker.self
+        ? TranscriptSpeaker.other
+        : TranscriptSpeaker.self;
+    ref
+        .read(qsoCaptureProvider.notifier)
+        .updateTranscriptSpeaker(widget.index, next);
+  }
+
+  Future<void> _togglePlayback() async {
+    final audioPath = widget.segment.audioPath;
+    if (audioPath == null) {
+      return;
+    }
+    final service = ref.read(audioPlaybackServiceProvider);
+    if (_isPlaying) {
+      await service.stop();
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _playbackError = null;
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isPlaying = true;
+      _playbackError = null;
+    });
+    try {
+      await service.play(audioPath);
+      if (mounted) {
+        setState(() => _isPlaying = false);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = false;
+          _playbackError =
+              '${context.l10n.audioPlaybackFailed}: ${_errorLabel(context, '$error')}';
+        });
+      }
+    }
   }
 }
 
@@ -5176,14 +5389,10 @@ class _CapabilityChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final label = switch (capability) {
-      ModelCapability.speech => l10n.speech,
-      ModelCapability.streaming => l10n.streaming,
-      ModelCapability.text => l10n.text,
-      ModelCapability.structuring => l10n.structuring,
-    };
-    return Chip(label: Text(label), visualDensity: VisualDensity.compact);
+    return Chip(
+      label: Text(_capabilityLabel(context, capability)),
+      visualDensity: VisualDensity.compact,
+    );
   }
 }
 
@@ -5446,6 +5655,24 @@ String _captureWarningLabel(BuildContext context, String warning) {
     'no_streaming_transcript' => l10n.noStreamingTranscriptProduced,
     _ => warning,
   };
+}
+
+String _transcriptSpeakerLabel(
+  BuildContext context,
+  TranscriptSpeaker speaker,
+) {
+  final l10n = context.l10n;
+  return switch (speaker) {
+    TranscriptSpeaker.other => l10n.otherStation,
+    TranscriptSpeaker.self => l10n.myStation,
+  };
+}
+
+String _formatSpeechDuration(Duration? duration) {
+  if (duration == null) {
+    return '--"';
+  }
+  return '${(duration.inMilliseconds / 1000).toStringAsFixed(1)}"';
 }
 
 Future<bool> _validateImportFormat(

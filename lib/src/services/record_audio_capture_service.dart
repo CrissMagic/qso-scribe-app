@@ -9,7 +9,7 @@ import 'package:record/record.dart';
 import '../domain/service_contracts.dart';
 import 'wav_audio.dart';
 
-class RecordAudioCaptureService implements AudioCaptureService {
+class RecordAudioCaptureService {
   RecordAudioCaptureService({
     AudioRecorder? recorder,
     this.sampleRate = 16000,
@@ -27,12 +27,10 @@ class RecordAudioCaptureService implements AudioCaptureService {
   int _audioByteCount = 0;
   bool _isRecording = false;
 
-  @override
   Stream<AudioFrame> get frames => _frames.stream;
 
   String? get currentAudioPath => _audioPath;
 
-  @override
   Future<void> start() async {
     if (_isRecording) {
       return;
@@ -88,7 +86,6 @@ class RecordAudioCaptureService implements AudioCaptureService {
     _isRecording = true;
   }
 
-  @override
   Future<String?> stop() async {
     if (!_isRecording) {
       return _audioPath;

@@ -12,6 +12,8 @@ enum ModelCapability { speech, streaming, text, structuring }
 
 enum ModelAssignmentTask { transcription, transcriptionStreaming, structuring }
 
+enum TranscriptSpeaker { other, self }
+
 extension AppLocaleModeX on AppLocaleMode {
   Locale? get locale {
     return switch (this) {
@@ -107,6 +109,7 @@ class QsoDraft {
     this.antenna,
     this.power,
     this.audioPath,
+    this.originalAudioDeleted = false,
     this.rawTranscript,
     this.errorMessage,
   });
@@ -127,9 +130,10 @@ class QsoDraft {
   final QsoField<String>? antenna;
   final QsoField<String>? power;
   final String? audioPath;
+  final bool originalAudioDeleted;
   final String? rawTranscript;
 
-  /// 失败原因（仅 failed 状态，不持久化到数据库）。
+  /// 处理提示（不持久化到数据库）。
   final String? errorMessage;
 
   bool get hasRequiredFields {
@@ -158,6 +162,7 @@ class QsoDraft {
     QsoField<String>? antenna,
     QsoField<String>? power,
     String? audioPath,
+    bool? originalAudioDeleted,
     String? rawTranscript,
     String? errorMessage,
     bool clearAudioPath = false,
@@ -180,6 +185,7 @@ class QsoDraft {
       antenna: antenna ?? this.antenna,
       power: power ?? this.power,
       audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
+      originalAudioDeleted: originalAudioDeleted ?? this.originalAudioDeleted,
       rawTranscript: clearRawTranscript
           ? null
           : rawTranscript ?? this.rawTranscript,
@@ -264,14 +270,63 @@ class RecordingSessionState {
 
 class TranscriptSegment {
   const TranscriptSegment({
+    this.id,
     required this.speaker,
     required this.text,
     required this.isFinal,
+    this.audioPath,
+    this.duration,
+    this.errorMessage,
   });
 
-  final String speaker;
+  final String? id;
+  final TranscriptSpeaker speaker;
   final String text;
   final bool isFinal;
+  final String? audioPath;
+  final Duration? duration;
+  final String? errorMessage;
+
+  bool get hasText => text.trim().isNotEmpty;
+
+  TranscriptSegment copyWith({
+    String? id,
+    TranscriptSpeaker? speaker,
+    String? text,
+    bool? isFinal,
+    String? audioPath,
+    Duration? duration,
+    String? errorMessage,
+    bool clearAudioPath = false,
+    bool clearError = false,
+  }) {
+    return TranscriptSegment(
+      id: id ?? this.id,
+      speaker: speaker ?? this.speaker,
+      text: text ?? this.text,
+      isFinal: isFinal ?? this.isFinal,
+      audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
+      duration: duration ?? this.duration,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+    );
+  }
+}
+
+String formatTranscriptSegmentsForStructuring(
+  List<TranscriptSegment> segments,
+) {
+  return [
+    for (final segment in segments)
+      if (segment.hasText)
+        '[${_transcriptSpeakerAiLabel(segment.speaker)}] ${segment.text.trim()}',
+  ].join('\n');
+}
+
+String _transcriptSpeakerAiLabel(TranscriptSpeaker speaker) {
+  return switch (speaker) {
+    TranscriptSpeaker.other => '对方',
+    TranscriptSpeaker.self => '我方',
+  };
 }
 
 enum AudioRetentionPolicy {
@@ -361,7 +416,11 @@ class StationEquipment {
 
 /// 单次 AI 请求返回的 token 用量（可能为 null，部分接口不返回）。
 class TokenUsage {
-  const TokenUsage({this.promptTokens, this.completionTokens, this.totalTokens});
+  const TokenUsage({
+    this.promptTokens,
+    this.completionTokens,
+    this.totalTokens,
+  });
 
   final int? promptTokens;
   final int? completionTokens;

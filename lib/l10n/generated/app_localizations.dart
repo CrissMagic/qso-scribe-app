@@ -821,7 +821,7 @@ abstract class AppLocalizations {
   /// No description provided for @noStreamingTranscript.
   ///
   /// In en, this message translates to:
-  /// **'No live transcript yet'**
+  /// **'Waiting for speech'**
   String get noStreamingTranscript;
 
   /// No description provided for @noAudioFile.
@@ -829,6 +829,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No audio file retained'**
   String get noAudioFile;
+
+  /// No description provided for @originalAudioDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Original audio was deleted after recognition'**
+  String get originalAudioDeleted;
 
   /// No description provided for @playAudio.
   ///
@@ -847,6 +853,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Audio playback failed'**
   String get audioPlaybackFailed;
+
+  /// No description provided for @otherStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Other station'**
+  String get otherStation;
+
+  /// No description provided for @myStation.
+  ///
+  /// In en, this message translates to:
+  /// **'My station'**
+  String get myStation;
+
+  /// No description provided for @unrecognizedSpeech.
+  ///
+  /// In en, this message translates to:
+  /// **'No transcript recognized'**
+  String get unrecognizedSpeech;
+
+  /// No description provided for @switchToMyStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as my station'**
+  String get switchToMyStation;
+
+  /// No description provided for @switchToOtherStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as other station'**
+  String get switchToOtherStation;
 
   /// No description provided for @noRawTranscript.
   ///
@@ -1301,7 +1337,7 @@ abstract class AppLocalizations {
   /// No description provided for @checkUpdate.
   ///
   /// In en, this message translates to:
-  /// **'Check for updates'**
+  /// **'Check'**
   String get checkUpdate;
 
   /// No description provided for @currentVersion.
@@ -1331,13 +1367,13 @@ abstract class AppLocalizations {
   /// No description provided for @updateNotes.
   ///
   /// In en, this message translates to:
-  /// **'Release notes'**
+  /// **'Notes'**
   String get updateNotes;
 
   /// No description provided for @goToDownload.
   ///
   /// In en, this message translates to:
-  /// **'Download on GitHub'**
+  /// **'GitHub download'**
   String get goToDownload;
 
   /// No description provided for @updateCheckFailed.
@@ -1373,7 +1409,7 @@ abstract class AppLocalizations {
   /// No description provided for @checkUpdatesOnStartupDesc.
   ///
   /// In en, this message translates to:
-  /// **'Check GitHub Releases after entering the main screen'**
+  /// **'Check GitHub Releases'**
   String get checkUpdatesOnStartupDesc;
 
   /// No description provided for @viewUpdate.
@@ -1415,7 +1451,7 @@ abstract class AppLocalizations {
   /// No description provided for @downloadAndOpenInstaller.
   ///
   /// In en, this message translates to:
-  /// **'Download, then open install prompt'**
+  /// **'Download and install'**
   String get downloadAndOpenInstaller;
 
   /// No description provided for @backgroundDownload.
@@ -1427,7 +1463,7 @@ abstract class AppLocalizations {
   /// No description provided for @downloadThenOpenInstaller.
   ///
   /// In en, this message translates to:
-  /// **'Install prompt will open after download'**
+  /// **'Install after download'**
   String get downloadThenOpenInstaller;
 
   /// No description provided for @backgroundDownloading.
@@ -1445,7 +1481,7 @@ abstract class AppLocalizations {
   /// No description provided for @openInstaller.
   ///
   /// In en, this message translates to:
-  /// **'Open install prompt'**
+  /// **'Install'**
   String get openInstaller;
 
   /// No description provided for @updateNetworkFailed.
@@ -1835,7 +1871,7 @@ abstract class AppLocalizations {
   /// No description provided for @appDescription.
   ///
   /// In en, this message translates to:
-  /// **'Hi, glad you\'re here. This is a community-maintained amateur radio QSO logging tool built with AI assistance.'**
+  /// **'Local QSO logging tool.'**
   String get appDescription;
 
   /// No description provided for @privacyPolicy.
@@ -1961,7 +1997,7 @@ abstract class AppLocalizations {
   /// No description provided for @streamingStoppedHint.
   ///
   /// In en, this message translates to:
-  /// **'Recording stopped. Review the transcript above, then tap AI Process to structure it.'**
+  /// **'Recording stopped'**
   String get streamingStoppedHint;
 
   /// No description provided for @aboutAppVersion.
