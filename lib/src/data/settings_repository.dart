@@ -49,6 +49,15 @@ class SettingsRepository {
     await _saveSetting('callsign', callsign);
   }
 
+  Future<String> loadQrzApiKey() async {
+    final values = await _loadSettingsMap();
+    return values['qrzApiKey'] ?? '';
+  }
+
+  Future<void> saveQrzApiKey(String apiKey) async {
+    await _saveSetting('qrzApiKey', apiKey.trim());
+  }
+
   Future<List<StationEquipment>> loadEquipment() async {
     final values = await _loadSettingsMap();
     final json = values['stationEquipment'];
@@ -61,7 +70,8 @@ class SettingsRepository {
         return StationEquipment(
           name: item['name'] as String? ?? '',
           antenna: item['antenna'] as String? ?? '',
-          powerOptions: (item['powerOptions'] as List<Object?>?)
+          powerOptions:
+              (item['powerOptions'] as List<Object?>?)
                   ?.whereType<String>()
                   .toList() ??
               const [],
@@ -86,15 +96,6 @@ class SettingsRepository {
 
   Future<void> saveSetupCompleted(bool completed) async {
     await _saveSetting('setupCompleted', completed.toString());
-  }
-
-  Future<bool> loadWelcomeShown() async {
-    final values = await _loadSettingsMap();
-    return values['welcomeShown'] == 'true';
-  }
-
-  Future<void> saveWelcomeShown() async {
-    await _saveSetting('welcomeShown', 'true');
   }
 
   Future<Map<String, String>> _loadSettingsMap() async {

@@ -1826,30 +1826,6 @@ abstract class AppLocalizations {
   /// **'Select equipment'**
   String get selectEquipment;
 
-  /// No description provided for @welcomeTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Welcome to QSO Scribe'**
-  String get welcomeTitle;
-
-  /// No description provided for @welcomeCallsign.
-  ///
-  /// In en, this message translates to:
-  /// **'Welcome, {callsign}'**
-  String welcomeCallsign(Object callsign);
-
-  /// No description provided for @welcomeSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Ready to log your next QSO'**
-  String get welcomeSubtitle;
-
-  /// No description provided for @skipWelcome.
-  ///
-  /// In en, this message translates to:
-  /// **'Enter'**
-  String get skipWelcome;
-
   /// No description provided for @rawText.
   ///
   /// In en, this message translates to:
@@ -2009,7 +1985,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyPolicyBody.
   ///
   /// In en, this message translates to:
-  /// **'All data (QSO logs, audio, transcripts, and settings) is stored locally on your device. API keys are kept on-device and only sent to the AI provider you configure. No data is collected, uploaded to our servers, or shared with third parties.'**
+  /// **'QSO logs, audio, transcripts, and settings are stored locally by default. When you use AI or logbook features, the data required for the request and the relevant API key are sent directly to the third-party service you selected; the app does not proxy this content through its own servers.'**
   String get privacyPolicyBody;
 
   /// No description provided for @openSourceCreditsBody.
@@ -2035,6 +2011,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Continue'**
   String get continueButton;
+
+  /// No description provided for @logbookUploads.
+  ///
+  /// In en, this message translates to:
+  /// **'Logbook uploads'**
+  String get logbookUploads;
+
+  /// No description provided for @logbookUploadsDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'QRZ and LoTW upload settings'**
+  String get logbookUploadsDesc;
+
+  /// No description provided for @logbookSettingsSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Logbook settings saved'**
+  String get logbookSettingsSaved;
+
+  /// No description provided for @qrzApiKey.
+  ///
+  /// In en, this message translates to:
+  /// **'QRZ API key'**
+  String get qrzApiKey;
+
+  /// No description provided for @qrzApiKeyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Required for QRZ Logbook API uploads. Stored locally.'**
+  String get qrzApiKeyHint;
+
+  /// No description provided for @lotwTqslRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'LoTW uploads are not supported in this version. TQSL signing must be implemented before the app can send signed files.'**
+  String get lotwTqslRequired;
+
+  /// No description provided for @confirmBeforeUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm and save this QSO before uploading'**
+  String get confirmBeforeUpload;
+
+  /// No description provided for @upload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload'**
+  String get upload;
+
+  /// No description provided for @notUploaded.
+  ///
+  /// In en, this message translates to:
+  /// **'Not uploaded'**
+  String get notUploaded;
+
+  /// No description provided for @uploadSucceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploaded'**
+  String get uploadSucceeded;
+
+  /// No description provided for @logbookUploadStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Local QSO changed; QRZ still has the previous version'**
+  String get logbookUploadStale;
+
+  /// No description provided for @qrzUploadPendingUnknown.
+  ///
+  /// In en, this message translates to:
+  /// **'The previous upload result is unknown. Check QRZ before retrying.'**
+  String get qrzUploadPendingUnknown;
+
+  /// No description provided for @qrzConfirmPendingRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Checked QRZ, retry upload'**
+  String get qrzConfirmPendingRetry;
+
+  /// No description provided for @qrzUploadSucceeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Uploaded to QRZ'**
+  String get qrzUploadSucceeded;
+
+  /// No description provided for @qrzUploadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'QRZ upload failed'**
+  String get qrzUploadFailed;
+
+  /// No description provided for @qrzUploadRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'QRZ rejected the QSO'**
+  String get qrzUploadRejected;
+
+  /// No description provided for @qrzApiKeyRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'QRZ API key is required'**
+  String get qrzApiKeyRequired;
 
   /// No description provided for @audioFormatWarningTitle.
   ///

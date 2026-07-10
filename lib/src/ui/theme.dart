@@ -6,7 +6,6 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
     required this.phosphorDim,
     required this.amber,
     required this.gridLine,
-    required this.trace,
     required this.statusDraft,
     required this.statusReview,
     required this.statusConfirmed,
@@ -19,7 +18,6 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
   final Color phosphorDim;
   final Color amber;
   final Color gridLine;
-  final Color trace;
   final Color statusDraft;
   final Color statusReview;
   final Color statusConfirmed;
@@ -33,7 +31,6 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
     Color? phosphorDim,
     Color? amber,
     Color? gridLine,
-    Color? trace,
     Color? statusDraft,
     Color? statusReview,
     Color? statusConfirmed,
@@ -46,7 +43,6 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
       phosphorDim: phosphorDim ?? this.phosphorDim,
       amber: amber ?? this.amber,
       gridLine: gridLine ?? this.gridLine,
-      trace: trace ?? this.trace,
       statusDraft: statusDraft ?? this.statusDraft,
       statusReview: statusReview ?? this.statusReview,
       statusConfirmed: statusConfirmed ?? this.statusConfirmed,
@@ -66,7 +62,6 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
       phosphorDim: Color.lerp(phosphorDim, other.phosphorDim, t)!,
       amber: Color.lerp(amber, other.amber, t)!,
       gridLine: Color.lerp(gridLine, other.gridLine, t)!,
-      trace: Color.lerp(trace, other.trace, t)!,
       statusDraft: Color.lerp(statusDraft, other.statusDraft, t)!,
       statusReview: Color.lerp(statusReview, other.statusReview, t)!,
       statusConfirmed: Color.lerp(statusConfirmed, other.statusConfirmed, t)!,
@@ -87,7 +82,7 @@ ThemeData buildAppTheme(Brightness brightness) {
   final colorScheme = ColorScheme(
     brightness: brightness,
     primary: isDark ? _darkPhosphor : _lightPhosphor,
-    onPrimary: isDark ? const Color(0xFF052E16) : Colors.white,
+    onPrimary: isDark ? const Color(0xFF052E16) : const Color(0xFFF5FFF9),
     primaryContainer: isDark
         ? const Color(0xFF0F3D2A)
         : const Color(0xFFD1FAE5),
@@ -95,7 +90,7 @@ ThemeData buildAppTheme(Brightness brightness) {
         ? const Color(0xFFBBF7D0)
         : const Color(0xFF064E3B),
     secondary: isDark ? _darkAmber : _lightAmber,
-    onSecondary: isDark ? const Color(0xFF3D2A00) : Colors.white,
+    onSecondary: isDark ? const Color(0xFF3D2A00) : const Color(0xFFFFFBF2),
     secondaryContainer: isDark
         ? const Color(0xFF3D2A00)
         : const Color(0xFFFEF3C7),
@@ -103,14 +98,14 @@ ThemeData buildAppTheme(Brightness brightness) {
         ? const Color(0xFFFDE68A)
         : const Color(0xFF78350F),
     tertiary: isDark ? const Color(0xFF22D3EE) : const Color(0xFF0E7490),
-    onTertiary: isDark ? const Color(0xFF003744) : Colors.white,
+    onTertiary: isDark ? const Color(0xFF003744) : const Color(0xFFF3FDFF),
     error: isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
-    onError: isDark ? const Color(0xFF450A0A) : Colors.white,
+    onError: isDark ? const Color(0xFF450A0A) : const Color(0xFFFFF8F7),
     errorContainer: isDark ? const Color(0xFF450A0A) : const Color(0xFFFEE2E2),
     onErrorContainer: isDark
         ? const Color(0xFFFCA5A5)
         : const Color(0xFF7F1D1D),
-    surface: isDark ? const Color(0xFF0F1623) : const Color(0xFFFFFFFF),
+    surface: isDark ? const Color(0xFF0F1623) : const Color(0xFFFBFDFC),
     onSurface: isDark ? const Color(0xFFD1FAE5) : const Color(0xFF0F172A),
     surfaceContainerHighest: isDark
         ? const Color(0xFF1E293B)
@@ -129,7 +124,6 @@ ThemeData buildAppTheme(Brightness brightness) {
     phosphorDim: isDark ? const Color(0xFF166534) : const Color(0xFFA7F3D0),
     amber: isDark ? _darkAmber : _lightAmber,
     gridLine: isDark ? const Color(0xFF1F2937) : const Color(0xFFE2E8F0),
-    trace: isDark ? const Color(0xFF22D3EE) : const Color(0xFF0891B2),
     statusDraft: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
     statusReview: isDark ? _darkAmber : _lightAmber,
     statusConfirmed: isDark ? _darkPhosphor : _lightPhosphor,
@@ -143,19 +137,10 @@ ThemeData buildAppTheme(Brightness brightness) {
 
   TextTheme buildTextTheme(TextTheme base) {
     return base.copyWith(
-      displayLarge: base.displayLarge?.copyWith(fontFamily: monoFamily),
       displayMedium: base.displayMedium?.copyWith(
         fontFamily: monoFamily,
         fontFeatures: const [FontFeature.tabularFigures()],
         letterSpacing: 1.5,
-      ),
-      displaySmall: base.displaySmall?.copyWith(fontFamily: monoFamily),
-      headlineLarge: base.headlineLarge?.copyWith(fontFamily: monoFamily),
-      headlineMedium: base.headlineMedium?.copyWith(fontFamily: monoFamily),
-      headlineSmall: base.headlineSmall?.copyWith(fontFamily: monoFamily),
-      labelLarge: base.labelLarge?.copyWith(
-        fontFamily: monoFamily,
-        letterSpacing: 1.2,
       ),
     );
   }
@@ -173,10 +158,8 @@ ThemeData buildAppTheme(Brightness brightness) {
       foregroundColor: colorScheme.onSurface,
       elevation: 0,
       titleTextStyle: TextStyle(
-        fontFamily: monoFamily,
         fontSize: 18,
         fontWeight: FontWeight.w600,
-        letterSpacing: 1.2,
         color: colorScheme.onSurface,
       ),
       shape: Border(bottom: BorderSide(color: oscilloscope.gridLine, width: 1)),
@@ -203,50 +186,27 @@ ThemeData buildAppTheme(Brightness brightness) {
         borderRadius: BorderRadius.circular(4),
         borderSide: BorderSide(color: colorScheme.primary, width: 2),
       ),
-      labelStyle: TextStyle(
-        fontFamily: monoFamily,
-        fontSize: 13,
-        letterSpacing: 0.8,
-        color: colorScheme.onSurfaceVariant,
-      ),
+      labelStyle: TextStyle(fontSize: 13, color: colorScheme.onSurfaceVariant),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        textStyle: const TextStyle(
-          fontFamily: monoFamily,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
-        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        textStyle: const TextStyle(
-          fontFamily: monoFamily,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
-        ),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(
-        textStyle: const TextStyle(fontFamily: monoFamily, letterSpacing: 0.8),
+        textStyle: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: colorScheme.surface,
       indicatorColor: colorScheme.primaryContainer,
       labelTextStyle: WidgetStatePropertyAll(
-        TextStyle(
-          fontFamily: monoFamily,
-          fontSize: 11,
-          letterSpacing: 0.8,
-          fontWeight: FontWeight.w500,
-        ),
+        TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
       ),
       iconTheme: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
@@ -264,12 +224,7 @@ ThemeData buildAppTheme(Brightness brightness) {
     chipTheme: ChipThemeData(
       backgroundColor: colorScheme.surface,
       side: BorderSide(color: oscilloscope.gridLine),
-      labelStyle: TextStyle(
-        fontFamily: monoFamily,
-        fontSize: 12,
-        letterSpacing: 0.6,
-        color: colorScheme.onSurface,
-      ),
+      labelStyle: TextStyle(fontSize: 12, color: colorScheme.onSurface),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
     ),
     textTheme: buildTextTheme(baseTextTheme),

@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/app_models.dart';
+import 'adif_codec.dart';
 import 'app_database.dart';
 import 'model_codec.dart';
 
@@ -65,7 +66,7 @@ class QsoRepository {
       orderBy: 'qso_datetime DESC',
     );
 
-    return rows.map(_decodeQso).toList();
+    return rows.map(decodeQsoRow).toList();
   }
 
   Future<QsoDraft?> findQso(String id) async {
@@ -79,7 +80,7 @@ class QsoRepository {
     if (rows.isEmpty) {
       return null;
     }
-    return _decodeQso(rows.single);
+    return decodeQsoRow(rows.single);
   }
 
   Future<String> saveQso(QsoDraft qso) async {
@@ -92,13 +93,46 @@ class QsoRepository {
     final db = await _database.instance;
     final now = DateTime.now().toUtc().toIso8601String();
     final id = qso.id ?? newLocalId('qso');
-    final row = _encodeQso(qso, id: id, timestamp: now);
+    if (qso.id == null) {
+      await db.insert('qso_logs', _encodeQso(qso, id: id, timestamp: now));
+      return id;
+    }
 
-    await db.insert(
-      'qso_logs',
-      row,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'qso_logs',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) {
+        await txn.insert('qso_logs', _encodeQso(qso, id: id, timestamp: now));
+        return;
+      }
+
+      final existing = decodeQsoRow(rows.single);
+      final encoded = _encodeQso(
+        qso,
+        id: id,
+        timestamp: now,
+        createdAt: rows.single['created_at'] as String,
+      );
+      await txn.update('qso_logs', encoded, where: 'id = ?', whereArgs: [id]);
+      if (toAdifRecord(existing) != toAdifRecord(decodeQsoRow(encoded))) {
+        await txn.update(
+          'logbook_uploads',
+          {
+            'status': encodeLogbookUploadStatus(LogbookUploadStatus.stale),
+            'updated_at': now,
+          },
+          where: 'qso_id = ? AND status = ?',
+          whereArgs: [
+            id,
+            encodeLogbookUploadStatus(LogbookUploadStatus.succeeded),
+          ],
+        );
+      }
+    });
     return id;
   }
 
@@ -206,6 +240,7 @@ class QsoRepository {
     QsoDraft qso, {
     required String id,
     required String timestamp,
+    String? createdAt,
   }) {
     return {
       'id': id,
@@ -230,50 +265,51 @@ class QsoRepository {
       'audio_path': qso.audioPath,
       'original_audio_deleted': encodeBool(qso.originalAudioDeleted),
       'raw_transcript': qso.rawTranscript,
-      'created_at': timestamp,
+      'created_at': createdAt ?? timestamp,
       'updated_at': timestamp,
     };
   }
+}
 
-  QsoDraft _decodeQso(Map<String, Object?> row) {
-    final dateTimeText = row['qso_datetime'] as String?;
-    final dateTime = dateTimeText == null
-        ? null
-        : DateTime.parse(dateTimeText).toLocal();
-    return QsoDraft(
-      id: row['id'] as String,
-      status: decodeLogStatus(row['status'] as String?),
-      callsign: QsoField(
-        value: row['callsign'] as String,
-        confidence: (row['callsign_confidence'] as num).toDouble(),
-        userEdited: decodeBool(row['callsign_user_edited']),
-        sourceText: row['callsign_source_text'] as String?,
-      ),
-      dateTime: QsoField(value: dateTime),
-      band: QsoField(value: row['band'] as String),
-      frequency: QsoField(value: row['frequency'] as String),
-      mode: QsoField(value: row['mode'] as String),
-      sentRst: QsoField(value: row['sent_rst'] as String),
-      receivedRst: QsoField(value: row['received_rst'] as String),
-      name: _optionalField(row['name'] as String?),
-      qth: _optionalField(
-        row['qth'] as String?,
-        confidence: (row['qth_confidence'] as num?)?.toDouble(),
-      ),
-      notes: _optionalField(row['notes'] as String?),
-      rig: _optionalField(row['rig'] as String?),
-      antenna: _optionalField(row['antenna'] as String?),
-      power: _optionalField(row['power'] as String?),
-      audioPath: row['audio_path'] as String?,
-      originalAudioDeleted: decodeBool(row['original_audio_deleted']),
-      rawTranscript: row['raw_transcript'] as String?,
-    );
-  }
+QsoDraft decodeQsoRow(Map<String, Object?> row) {
+  final dateTimeText = row['qso_datetime'] as String?;
+  final dateTime = dateTimeText == null
+      ? null
+      : DateTime.parse(dateTimeText).toLocal();
+  return QsoDraft(
+    id: row['id'] as String,
+    status: decodeLogStatus(row['status'] as String?),
+    callsign: QsoField(
+      value: row['callsign'] as String,
+      confidence: (row['callsign_confidence'] as num).toDouble(),
+      userEdited: decodeBool(row['callsign_user_edited']),
+      sourceText: row['callsign_source_text'] as String?,
+    ),
+    dateTime: QsoField(value: dateTime),
+    band: QsoField(value: row['band'] as String),
+    frequency: QsoField(value: row['frequency'] as String),
+    mode: QsoField(value: row['mode'] as String),
+    sentRst: QsoField(value: row['sent_rst'] as String),
+    receivedRst: QsoField(value: row['received_rst'] as String),
+    name: _optionalQsoField(row['name'] as String?),
+    qth: _optionalQsoField(
+      row['qth'] as String?,
+      confidence: (row['qth_confidence'] as num?)?.toDouble(),
+    ),
+    notes: _optionalQsoField(row['notes'] as String?),
+    rig: _optionalQsoField(row['rig'] as String?),
+    antenna: _optionalQsoField(row['antenna'] as String?),
+    power: _optionalQsoField(row['power'] as String?),
+    audioPath: row['audio_path'] as String?,
+    originalAudioDeleted: decodeBool(row['original_audio_deleted']),
+    rawTranscript: row['raw_transcript'] as String?,
+    updatedAt: DateTime.parse(row['updated_at'] as String).toUtc(),
+  );
+}
 
-  QsoField<String>? _optionalField(String? value, {double? confidence}) {
-    if (value == null || value.isEmpty) {
-      return null;
-    }
-    return QsoField(value: value, confidence: confidence ?? 1);
+QsoField<String>? _optionalQsoField(String? value, {double? confidence}) {
+  if (value == null || value.isEmpty) {
+    return null;
   }
+  return QsoField(value: value, confidence: confidence ?? 1);
 }

@@ -5,6 +5,8 @@ String encodeTranscriptionMode(TranscriptionMode value) => value.name;
 String encodeFailureHandling(FailureHandling value) => value.name;
 String encodeAudioRetentionPolicy(AudioRetentionPolicy value) => value.name;
 String encodeLogStatus(LogStatus value) => value.name;
+String encodeExternalLogbook(ExternalLogbook value) => value.name;
+String encodeLogbookUploadStatus(LogbookUploadStatus value) => value.name;
 String encodeModelAssignmentTask(ModelAssignmentTask value) => value.name;
 String encodeImportSourceType(ImportSourceType value) => value.name;
 String encodeImportJobStatus(ImportJobStatus value) => value.name;
@@ -42,6 +44,20 @@ LogStatus decodeLogStatus(String? value) {
   return LogStatus.values.firstWhere(
     (item) => item.name == value,
     orElse: () => LogStatus.draft,
+  );
+}
+
+ExternalLogbook decodeExternalLogbook(String? value) {
+  return ExternalLogbook.values.firstWhere(
+    (item) => item.name == value,
+    orElse: () => ExternalLogbook.qrz,
+  );
+}
+
+LogbookUploadStatus decodeLogbookUploadStatus(String? value) {
+  return LogbookUploadStatus.values.firstWhere(
+    (item) => item.name == value,
+    orElse: () => LogbookUploadStatus.pending,
   );
 }
 

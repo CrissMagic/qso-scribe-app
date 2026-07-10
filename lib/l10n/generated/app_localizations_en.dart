@@ -910,20 +910,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectEquipment => 'Select equipment';
 
   @override
-  String get welcomeTitle => 'Welcome to QSO Scribe';
-
-  @override
-  String welcomeCallsign(Object callsign) {
-    return 'Welcome, $callsign';
-  }
-
-  @override
-  String get welcomeSubtitle => 'Ready to log your next QSO';
-
-  @override
-  String get skipWelcome => 'Enter';
-
-  @override
   String get rawText => 'Raw text';
 
   @override
@@ -1006,7 +992,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyPolicyBody =>
-      'All data (QSO logs, audio, transcripts, and settings) is stored locally on your device. API keys are kept on-device and only sent to the AI provider you configure. No data is collected, uploaded to our servers, or shared with third parties.';
+      'QSO logs, audio, transcripts, and settings are stored locally by default. When you use AI or logbook features, the data required for the request and the relevant API key are sent directly to the third-party service you selected; the app does not proxy this content through its own servers.';
 
   @override
   String get openSourceCreditsBody =>
@@ -1021,6 +1007,62 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get continueButton => 'Continue';
+
+  @override
+  String get logbookUploads => 'Logbook uploads';
+
+  @override
+  String get logbookUploadsDesc => 'QRZ and LoTW upload settings';
+
+  @override
+  String get logbookSettingsSaved => 'Logbook settings saved';
+
+  @override
+  String get qrzApiKey => 'QRZ API key';
+
+  @override
+  String get qrzApiKeyHint =>
+      'Required for QRZ Logbook API uploads. Stored locally.';
+
+  @override
+  String get lotwTqslRequired =>
+      'LoTW uploads are not supported in this version. TQSL signing must be implemented before the app can send signed files.';
+
+  @override
+  String get confirmBeforeUpload =>
+      'Confirm and save this QSO before uploading';
+
+  @override
+  String get upload => 'Upload';
+
+  @override
+  String get notUploaded => 'Not uploaded';
+
+  @override
+  String get uploadSucceeded => 'Uploaded';
+
+  @override
+  String get logbookUploadStale =>
+      'Local QSO changed; QRZ still has the previous version';
+
+  @override
+  String get qrzUploadPendingUnknown =>
+      'The previous upload result is unknown. Check QRZ before retrying.';
+
+  @override
+  String get qrzConfirmPendingRetry => 'Checked QRZ, retry upload';
+
+  @override
+  String get qrzUploadSucceeded => 'Uploaded to QRZ';
+
+  @override
+  String get qrzUploadFailed => 'QRZ upload failed';
+
+  @override
+  String get qrzUploadRejected => 'QRZ rejected the QSO';
+
+  @override
+  String get qrzApiKeyRequired => 'QRZ API key is required';
 
   @override
   String get audioFormatWarningTitle => 'Audio format warning';

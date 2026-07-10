@@ -6,7 +6,7 @@ class AppDatabase {
   AppDatabase({Database? database}) : _database = database;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 8;
+  static const databaseVersion = 9;
 
   Database? _database;
 
@@ -61,6 +61,9 @@ class AppDatabase {
     }
     if (oldVersion < 8) {
       await _migrateToV8(db);
+    }
+    if (oldVersion < 9) {
+      await _migrateToV9(db);
     }
   }
 
@@ -203,6 +206,8 @@ CREATE TABLE IF NOT EXISTS token_usage (
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at)',
     );
+
+    await _createLogbookUploadTable(db);
   }
 
   static Future<void> _migrateToV2(Database db) async {
@@ -317,6 +322,32 @@ CREATE TABLE IF NOT EXISTS token_usage (
         'ALTER TABLE qso_logs ADD COLUMN original_audio_deleted INTEGER NOT NULL DEFAULT 0',
       );
     }
+  }
+
+  // v9：记录外部日志网站单条上传结果；不改变本地 QSO 主状态。
+  static Future<void> _migrateToV9(Database db) async {
+    await _createLogbookUploadTable(db);
+  }
+
+  static Future<void> _createLogbookUploadTable(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS logbook_uploads (
+  id TEXT PRIMARY KEY,
+  qso_id TEXT NOT NULL,
+  logbook TEXT NOT NULL,
+  status TEXT NOT NULL,
+  remote_id TEXT,
+  error_message TEXT,
+  uploaded_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(qso_id, logbook),
+  FOREIGN KEY(qso_id) REFERENCES qso_logs(id) ON DELETE CASCADE
+)
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_logbook_uploads_qso ON logbook_uploads(qso_id)',
+    );
   }
 
   static Future<void> _migrateQsoLogsDateTimeNullable(

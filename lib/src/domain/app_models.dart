@@ -8,6 +8,10 @@ enum FailureHandling { alert, silent }
 
 enum LogStatus { draft, needsReview, confirmed, exported, failed }
 
+enum ExternalLogbook { qrz }
+
+enum LogbookUploadStatus { pending, succeeded, failed, stale }
+
 enum ModelCapability { speech, streaming, text, structuring }
 
 enum ModelAssignmentTask { transcription, transcriptionStreaming, structuring }
@@ -112,6 +116,7 @@ class QsoDraft {
     this.originalAudioDeleted = false,
     this.rawTranscript,
     this.errorMessage,
+    this.updatedAt,
   });
 
   final String? id;
@@ -132,6 +137,7 @@ class QsoDraft {
   final String? audioPath;
   final bool originalAudioDeleted;
   final String? rawTranscript;
+  final DateTime? updatedAt;
 
   /// 处理提示（不持久化到数据库）。
   final String? errorMessage;
@@ -165,6 +171,7 @@ class QsoDraft {
     bool? originalAudioDeleted,
     String? rawTranscript,
     String? errorMessage,
+    DateTime? updatedAt,
     bool clearAudioPath = false,
     bool clearRawTranscript = false,
   }) {
@@ -190,6 +197,7 @@ class QsoDraft {
           ? null
           : rawTranscript ?? this.rawTranscript,
       errorMessage: errorMessage ?? this.errorMessage,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
@@ -519,6 +527,26 @@ class ExportHistoryEntry {
   final int qsoCount;
   final String filterSummary;
   final DateTime createdAt;
+}
+
+class LogbookUploadEntry {
+  const LogbookUploadEntry({
+    required this.qsoId,
+    required this.logbook,
+    required this.status,
+    required this.updatedAt,
+    this.remoteId,
+    this.errorMessage,
+    this.uploadedAt,
+  });
+
+  final String qsoId;
+  final ExternalLogbook logbook;
+  final LogbookUploadStatus status;
+  final DateTime updatedAt;
+  final String? remoteId;
+  final String? errorMessage;
+  final DateTime? uploadedAt;
 }
 
 class LocalDataSummary {

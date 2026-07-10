@@ -22,15 +22,37 @@ class ExportHistoryRepository {
     required String filePath,
     required int qsoCount,
     required String filterSummary,
+    required Map<String, DateTime> confirmedQsoVersions,
   }) async {
     final db = await _database.instance;
-    await db.insert('export_history', {
-      'id': newLocalId('export'),
-      'format': format,
-      'file_path': filePath,
-      'qso_count': qsoCount,
-      'filter_summary': filterSummary,
-      'created_at': DateTime.now().toUtc().toIso8601String(),
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.insert('export_history', {
+        'id': newLocalId('export'),
+        'format': format,
+        'file_path': filePath,
+        'qso_count': qsoCount,
+        'filter_summary': filterSummary,
+        'created_at': timestamp,
+      });
+
+      final batch = txn.batch();
+      for (final entry in confirmedQsoVersions.entries) {
+        batch.update(
+          'qso_logs',
+          {
+            'status': encodeLogStatus(LogStatus.exported),
+            'updated_at': timestamp,
+          },
+          where: 'id = ? AND status = ? AND updated_at = ?',
+          whereArgs: [
+            entry.key,
+            encodeLogStatus(LogStatus.confirmed),
+            entry.value.toUtc().toIso8601String(),
+          ],
+        );
+      }
+      await batch.commit(noResult: true);
     });
   }
 

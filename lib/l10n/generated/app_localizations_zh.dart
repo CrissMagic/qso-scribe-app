@@ -877,20 +877,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get selectEquipment => '选择设备';
 
   @override
-  String get welcomeTitle => '欢迎使用 QSO Scribe';
-
-  @override
-  String welcomeCallsign(Object callsign) {
-    return '欢迎，$callsign';
-  }
-
-  @override
-  String get welcomeSubtitle => '准备好记录下一次 QSO';
-
-  @override
-  String get skipWelcome => '进入';
-
-  @override
   String get rawText => '原始文本';
 
   @override
@@ -972,7 +958,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get privacyPolicyBody =>
-      '所有数据（QSO 日志、音频、转写文本和设置）均保存在本地设备上。API 密钥仅存储于本机，并仅发送给您配置的 AI 供应商。我们不收集、不上传、不与第三方共享任何数据。';
+      'QSO 日志、音频、转写文本和设置默认保存在本地设备。使用 AI 或日志网站功能时，请求所需的数据和对应 API Key 会直接发送给您选择的第三方服务；本应用不经自有服务器中转这些内容。';
 
   @override
   String get openSourceCreditsBody =>
@@ -986,6 +972,58 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get continueButton => '继续';
+
+  @override
+  String get logbookUploads => '日志网站上传';
+
+  @override
+  String get logbookUploadsDesc => 'QRZ 与 LoTW 上传设置';
+
+  @override
+  String get logbookSettingsSaved => '日志网站设置已保存';
+
+  @override
+  String get qrzApiKey => 'QRZ API Key';
+
+  @override
+  String get qrzApiKeyHint => '用于 QRZ Logbook API 上传。本地存储。';
+
+  @override
+  String get lotwTqslRequired =>
+      '当前版本尚未支持 LoTW 上传。需要先实现 TQSL 签名，App 生成签名文件后才能上传。';
+
+  @override
+  String get confirmBeforeUpload => '请先确认并保存这条 QSO，再上传';
+
+  @override
+  String get upload => '上传';
+
+  @override
+  String get notUploaded => '未上传';
+
+  @override
+  String get uploadSucceeded => '已上传';
+
+  @override
+  String get logbookUploadStale => '本地记录已修改，QRZ 中仍为旧版本';
+
+  @override
+  String get qrzUploadPendingUnknown => '上次上传结果未知，请先在 QRZ 中核对后再重试。';
+
+  @override
+  String get qrzConfirmPendingRetry => '已核对 QRZ，重新上传';
+
+  @override
+  String get qrzUploadSucceeded => '已上传到 QRZ';
+
+  @override
+  String get qrzUploadFailed => 'QRZ 上传失败';
+
+  @override
+  String get qrzUploadRejected => 'QRZ 拒绝了这条 QSO';
+
+  @override
+  String get qrzApiKeyRequired => '请先填写 QRZ API Key';
 
   @override
   String get audioFormatWarningTitle => '音频格式警告';

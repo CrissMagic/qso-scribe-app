@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
@@ -18,6 +17,7 @@ import '../domain/app_models.dart';
 import '../domain/filter_helpers.dart';
 import '../domain/provider_catalog.dart';
 import '../services/release_info_service.dart';
+import '../services/qrz_logbook_upload_service.dart';
 import '../state/app_state.dart';
 import 'band_colors.dart';
 import 'theme.dart';
@@ -27,100 +27,6 @@ extension L10nX on BuildContext {
 }
 
 enum _ExportFormat { adif, csv, rawTranscript }
-
-class WelcomeScreen extends ConsumerStatefulWidget {
-  const WelcomeScreen({super.key});
-
-  @override
-  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
-}
-
-class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _fadeIn;
-  late final Animation<Offset> _slideUp;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _fadeIn = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
-    _slideUp = Tween<Offset>(
-      begin: const Offset(0, 0.15),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _controller.forward();
-
-    // 3 秒后自动跳转
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        _navigateToMain();
-      }
-    });
-  }
-
-  void _navigateToMain() {
-    ref.read(welcomeShownProvider.notifier).markShown();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final callsign = ref.watch(callsignProvider);
-    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
-
-    return Scaffold(
-      body: GestureDetector(
-        onTap: _navigateToMain,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: FadeTransition(
-            opacity: _fadeIn,
-            child: SlideTransition(
-              position: _slideUp,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.radio, size: 64, color: osc.phosphor),
-                  const SizedBox(height: 24),
-                  Text(
-                    l10n.welcomeTitle,
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  if (callsign.isNotEmpty)
-                    Text(
-                      l10n.welcomeCallsign(callsign),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleLarge?.copyWith(color: osc.phosphor),
-                    ),
-                  const SizedBox(height: 8),
-                  Text(l10n.welcomeSubtitle),
-                  const SizedBox(height: 32),
-                  FilledButton.tonal(
-                    onPressed: _navigateToMain,
-                    child: Text(l10n.skipWelcome),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class FirstRunSetupScreen extends ConsumerStatefulWidget {
   const FirstRunSetupScreen({super.key});
@@ -495,56 +401,54 @@ class _AfterQsoTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        SizedBox(
-          height: 220,
-          child: _StatusPanel(
+    return Scaffold(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _StatusPanel(
             title: l10n.afterQsoMode,
             elapsed: session.elapsed,
             active: session.isRecording,
           ),
-        ),
-        if (session.errorMessage != null) ...[
-          const SizedBox(height: 8),
-          _PlaceholderCard(
-            title: l10n.failed,
-            text: _errorLabel(context, session.errorMessage!),
-            icon: Icons.error_outline,
-          ),
+          if (session.errorMessage != null) ...[
+            const SizedBox(height: 8),
+            _PlaceholderCard(
+              title: l10n.failed,
+              text: _errorLabel(context, session.errorMessage!),
+              icon: Icons.error_outline,
+            ),
+          ],
+          if (capture.warningMessage != null) ...[
+            const SizedBox(height: 8),
+            _PlaceholderCard(
+              title: l10n.needsReview,
+              text: _captureWarningLabel(context, capture.warningMessage!),
+              icon: Icons.info_outline,
+            ),
+          ],
         ],
-        if (capture.warningMessage != null) ...[
-          const SizedBox(height: 8),
-          _PlaceholderCard(
-            title: l10n.needsReview,
-            text: _captureWarningLabel(context, capture.warningMessage!),
-            icon: Icons.info_outline,
-          ),
-        ],
-        const SizedBox(height: 24),
-        _RecordControls(
-          session: session,
-          mode: TranscriptionMode.afterQso,
-          onStopped: (audioPath) async {
-            final generatedDraft = await ref
-                .read(qsoCaptureProvider.notifier)
-                .finishQso(
-                  audioPath: audioPath,
-                  startedAt: session.startedAt,
-                  mode: TranscriptionMode.afterQso,
-                  failureHandling: ref.read(failureHandlingProvider),
-                );
-            if (context.mounted) {
-              await Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => QsoReviewScreen(draft: generatedDraft),
-                ),
+      ),
+      bottomNavigationBar: _RecordControls(
+        session: session,
+        mode: TranscriptionMode.afterQso,
+        onStopped: (audioPath) async {
+          final generatedDraft = await ref
+              .read(qsoCaptureProvider.notifier)
+              .finishQso(
+                audioPath: audioPath,
+                startedAt: session.startedAt,
+                mode: TranscriptionMode.afterQso,
+                failureHandling: ref.read(failureHandlingProvider),
               );
-            }
-          },
-        ),
-      ],
+          if (context.mounted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => QsoReviewScreen(draft: generatedDraft),
+              ),
+            );
+          }
+        },
+      ),
     );
   }
 }
@@ -564,83 +468,87 @@ class _StreamingTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final pending = capture.pendingStructuring && !session.isRecording;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _StatusPanel(
-          title: l10n.streamingMode,
-          elapsed: session.elapsed,
-          active: session.isRecording,
-        ),
-        if (session.errorMessage != null) ...[
-          const SizedBox(height: 8),
-          _PlaceholderCard(
-            title: l10n.failed,
-            text: _errorLabel(context, session.errorMessage!),
-            icon: Icons.error_outline,
+    return Scaffold(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _StatusPanel(
+            title: l10n.streamingMode,
+            elapsed: session.elapsed,
+            active: session.isRecording,
           ),
-        ],
-        if (capture.warningMessage != null) ...[
-          const SizedBox(height: 8),
-          _PlaceholderCard(
-            title: l10n.needsReview,
-            text: _captureWarningLabel(context, capture.warningMessage!),
-            icon: Icons.info_outline,
-          ),
-        ],
-        const SizedBox(height: 16),
-        _TranscriptCard(segments: transcript),
-        const SizedBox(height: 16),
-        if (pending) ...[
-          FilledButton.icon(
-            onPressed: () async {
-              final generatedDraft = await ref
-                  .read(qsoCaptureProvider.notifier)
-                  .structureCapturedTranscript();
-              if (context.mounted) {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => QsoReviewScreen(draft: generatedDraft),
-                  ),
-                );
-              }
-            },
-            icon: const Icon(Icons.auto_fix_high),
-            label: Text(l10n.aiProcess),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final recorder = ref.read(recordingSessionProvider.notifier);
-              await recorder.start(TranscriptionMode.streaming);
-              final updatedSession = ref.read(recordingSessionProvider);
-              final startedAt = updatedSession.startedAt;
-              if (updatedSession.isRecording && startedAt != null) {
-                ref
+          if (session.errorMessage != null) ...[
+            const SizedBox(height: 8),
+            _PlaceholderCard(
+              title: l10n.failed,
+              text: _errorLabel(context, session.errorMessage!),
+              icon: Icons.error_outline,
+            ),
+          ],
+          if (capture.warningMessage != null) ...[
+            const SizedBox(height: 8),
+            _PlaceholderCard(
+              title: l10n.needsReview,
+              text: _captureWarningLabel(context, capture.warningMessage!),
+              icon: Icons.info_outline,
+            ),
+          ],
+          const SizedBox(height: 16),
+          _TranscriptCard(segments: transcript),
+          if (pending) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () async {
+                final generatedDraft = await ref
                     .read(qsoCaptureProvider.notifier)
-                    .startQso(
-                      mode: TranscriptionMode.streaming,
-                      startedAt: startedAt,
-                    );
-              }
-            },
-            icon: const Icon(Icons.refresh),
-            label: Text(l10n.discardAndRestart),
-          ),
-        ] else
-          _RecordControls(
-            session: session,
-            mode: TranscriptionMode.streaming,
-            onStopped: (audioPath) async {
-              await ref
-                  .read(qsoCaptureProvider.notifier)
-                  .stopQsoStreaming(
-                    audioPath: audioPath,
-                    startedAt: session.startedAt,
+                    .structureCapturedTranscript();
+                if (context.mounted) {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => QsoReviewScreen(draft: generatedDraft),
+                    ),
                   );
-            },
-          ),
-      ],
+                }
+              },
+              icon: const Icon(Icons.auto_fix_high),
+              label: Text(l10n.aiProcess),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final recorder = ref.read(recordingSessionProvider.notifier);
+                await recorder.start(TranscriptionMode.streaming);
+                final updatedSession = ref.read(recordingSessionProvider);
+                final startedAt = updatedSession.startedAt;
+                if (updatedSession.isRecording && startedAt != null) {
+                  ref
+                      .read(qsoCaptureProvider.notifier)
+                      .startQso(
+                        mode: TranscriptionMode.streaming,
+                        startedAt: startedAt,
+                      );
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: Text(l10n.discardAndRestart),
+            ),
+          ],
+        ],
+      ),
+      bottomNavigationBar: pending
+          ? null
+          : _RecordControls(
+              session: session,
+              mode: TranscriptionMode.streaming,
+              onStopped: (audioPath) async {
+                await ref
+                    .read(qsoCaptureProvider.notifier)
+                    .stopQsoStreaming(
+                      audioPath: audioPath,
+                      startedAt: session.startedAt,
+                    );
+              },
+            ),
     );
   }
 }
@@ -661,27 +569,42 @@ class _RecordControls extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    return FilledButton.icon(
-      onPressed: session.isProcessing
-          ? null
-          : () async {
-              final recorder = ref.read(recordingSessionProvider.notifier);
-              if (session.isRecording) {
-                final audioPath = await recorder.stop();
-                await onStopped(audioPath);
-              } else {
-                await recorder.start(mode);
-                final updatedSession = ref.read(recordingSessionProvider);
-                final startedAt = updatedSession.startedAt;
-                if (updatedSession.isRecording && startedAt != null) {
-                  ref
-                      .read(qsoCaptureProvider.notifier)
-                      .startQso(mode: mode, startedAt: startedAt);
-                }
-              }
-            },
-      icon: Icon(session.isRecording ? Icons.stop : Icons.mic),
-      label: Text(session.isRecording ? l10n.endQso : l10n.startQso),
+    final stopping = session.isRecording;
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(64),
+            backgroundColor: stopping ? colors.error : colors.primary,
+            foregroundColor: stopping ? colors.onError : colors.onPrimary,
+          ),
+          onPressed: session.isProcessing
+              ? null
+              : () async {
+                  final recorder = ref.read(recordingSessionProvider.notifier);
+                  if (stopping) {
+                    await HapticFeedback.mediumImpact();
+                    final audioPath = await recorder.stop();
+                    await onStopped(audioPath);
+                  } else {
+                    await HapticFeedback.selectionClick();
+                    await recorder.start(mode);
+                    final updatedSession = ref.read(recordingSessionProvider);
+                    final startedAt = updatedSession.startedAt;
+                    if (updatedSession.isRecording && startedAt != null) {
+                      ref
+                          .read(qsoCaptureProvider.notifier)
+                          .startQso(mode: mode, startedAt: startedAt);
+                    }
+                  }
+                },
+          icon: Icon(stopping ? Icons.stop : Icons.mic),
+          label: Text(stopping ? l10n.endQso : l10n.startQso),
+        ),
+      ),
     );
   }
 }
@@ -696,7 +619,6 @@ class LogsScreen extends ConsumerStatefulWidget {
 }
 
 class _LogsScreenState extends ConsumerState<LogsScreen> {
-  static const _pageSize = 20;
   final _searchController = TextEditingController();
   Timer? _searchDebounce;
   _FilterDimension _dimension = _FilterDimension.status;
@@ -719,20 +641,22 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     });
   }
 
-  void _cycleDimension() {
-    setState(() {
-      _dimension = _FilterDimension
-          .values[(_dimension.index + 1) % _FilterDimension.values.length];
-    });
-  }
-
-  String _dimensionLabel(BuildContext context) {
+  String _dimensionLabel(BuildContext context, _FilterDimension dimension) {
     final l10n = context.l10n;
-    return switch (_dimension) {
+    return switch (dimension) {
       _FilterDimension.status => l10n.filterDimensionStatus,
       _FilterDimension.band => l10n.filterDimensionBand,
       _FilterDimension.mode => l10n.filterDimensionMode,
     };
+  }
+
+  void _clearLogFilters() {
+    _searchController.clear();
+    setState(() {
+      _status = null;
+      _band = null;
+      _mode = null;
+    });
   }
 
   @override
@@ -771,10 +695,6 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             if (tb == null) return -1;
             return _dateDesc ? tb.compareTo(ta) : ta.compareTo(tb);
           });
-          final displayCount = (filteredLogs.length < _pageSize)
-              ? filteredLogs.length
-              : _pageSize;
-          final hasMore = filteredLogs.length > _pageSize;
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(qsoLogProvider);
@@ -805,14 +725,39 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                           onChanged: _onSearchChanged,
                         ),
                         const SizedBox(height: 8),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            ActionChip(
-                              avatar: const Icon(Icons.filter_list, size: 18),
-                              label: Text(_dimensionLabel(context)),
-                              onPressed: _cycleDimension,
+                            PopupMenuButton<_FilterDimension>(
+                              tooltip: l10n.filter,
+                              initialValue: _dimension,
+                              onSelected: (value) =>
+                                  setState(() => _dimension = value),
+                              itemBuilder: (context) => [
+                                for (final dimension in _FilterDimension.values)
+                                  PopupMenuItem(
+                                    value: dimension,
+                                    child: Row(
+                                      children: [
+                                        if (dimension == _dimension) ...[
+                                          const Icon(Icons.check, size: 18),
+                                          const SizedBox(width: 8),
+                                        ],
+                                        Text(
+                                          _dimensionLabel(context, dimension),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                              child: Chip(
+                                avatar: const Icon(Icons.filter_list, size: 18),
+                                label: Text(
+                                  _dimensionLabel(context, _dimension),
+                                ),
+                              ),
                             ),
-                            const Spacer(),
                             ActionChip(
                               avatar: Icon(
                                 _dateDesc
@@ -846,10 +791,32 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                   SliverPadding(
                     padding: const EdgeInsets.all(16),
                     sliver: SliverToBoxAdapter(
-                      child: _PlaceholderCard(
-                        title: l10n.logs,
-                        text: l10n.noLogsMatchFilters,
-                        icon: Icons.info_outline,
+                      child: Column(
+                        children: [
+                          _PlaceholderCard(
+                            title: l10n.logs,
+                            text: l10n.noLogsMatchFilters,
+                            icon: Icons.info_outline,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: allLogs.isEmpty
+                                ? () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => const ImportScreen(),
+                                    ),
+                                  )
+                                : _clearLogFilters,
+                            icon: Icon(
+                              allLogs.isEmpty
+                                  ? Icons.file_download
+                                  : Icons.filter_alt_off,
+                            ),
+                            label: Text(
+                              allLogs.isEmpty ? l10n.import : l10n.clearFilters,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   )
@@ -857,22 +824,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     sliver: SliverList.separated(
-                      itemCount: displayCount + (hasMore ? 1 : 0),
+                      itemCount: filteredLogs.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        if (index >= filteredLogs.length) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                l10n.noMoreData,
-                                style: Theme.of(context).textTheme.labelMedium,
-                              ),
-                            ),
-                          );
-                        }
-                        return _LogListItem(log: filteredLogs[index]);
-                      },
+                      itemBuilder: (context, index) =>
+                          _LogListItem(log: filteredLogs[index]),
                     ),
                   ),
                 const SliverPadding(padding: EdgeInsets.only(bottom: 16)),
@@ -1352,7 +1307,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   Future<void> _exportToFile() async {
     final service = ref.read(exportServiceProvider);
     final filter = _currentFilter();
-    final content = switch (_format) {
+    final generated = switch (_format) {
       _ExportFormat.adif => await service.exportAdif(filter),
       _ExportFormat.csv => await service.exportCsv(filter),
       _ExportFormat.rawTranscript => await service.exportRawTranscript(filter),
@@ -1371,26 +1326,53 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       exportDir.path,
       'qso_export_${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension',
     );
-    await File(path).writeAsString(content);
-    await ref
-        .read(exportHistoryRepositoryProvider)
-        .saveExport(
-          format: extension,
-          filePath: path,
-          qsoCount: ref
-              .read(qsoLogProvider)
-              .maybeWhen(
-                data: (logs) => logs.where(_matchesExportFilter).length,
-                orElse: () => 0,
+    final exportedFile = File(path).absolute;
+    await exportedFile.writeAsString(generated.content);
+    final repository = ref.read(exportHistoryRepositoryProvider);
+    final filterSummary = _filterSummary();
+    try {
+      await repository.saveExport(
+        format: extension,
+        filePath: exportedFile.path,
+        qsoCount: generated.qsoIds.length,
+        filterSummary: filterSummary,
+        confirmedQsoVersions: generated.confirmedQsoVersions,
+      );
+    } catch (error) {
+      if (!mounted) {
+        rethrow;
+      }
+      final l10n = context.l10n;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${l10n.exportHistory} / ${l10n.status}: ${l10n.failed}'),
+          content: SelectableText(
+            '${l10n.exportedTo}: ${exportedFile.path}\n\n'
+            '${l10n.exportHistory} / ${l10n.status}: ${l10n.failed}\n\n'
+            '${l10n.errorDetail}: $error',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(
+                MaterialLocalizations.of(dialogContext).okButtonLabel,
               ),
-          filterSummary: _filterSummary(),
-        );
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    ref.invalidate(qsoLogProvider);
     ref.invalidate(exportHistoryProvider);
     if (!mounted) {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${context.l10n.exportedTo}: $path')),
+      SnackBar(
+        content: Text('${context.l10n.exportedTo}: ${exportedFile.path}'),
+      ),
     );
   }
 
@@ -1474,6 +1456,16 @@ class SettingsScreen extends ConsumerWidget {
             title: l10n.appSettings,
             children: [
               _SettingsTile(
+                icon: Icons.cloud_upload_outlined,
+                title: l10n.logbookUploads,
+                subtitle: l10n.logbookUploadsDesc,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LogbookIntegrationSettingsScreen(),
+                  ),
+                ),
+              ),
+              _SettingsTile(
                 icon: Icons.language,
                 title: l10n.language,
                 subtitle: l10n.followSystemDesc,
@@ -1548,6 +1540,127 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LogbookIntegrationSettingsScreen extends ConsumerStatefulWidget {
+  const LogbookIntegrationSettingsScreen({super.key});
+
+  @override
+  ConsumerState<LogbookIntegrationSettingsScreen> createState() =>
+      _LogbookIntegrationSettingsScreenState();
+}
+
+class _LogbookIntegrationSettingsScreenState
+    extends ConsumerState<LogbookIntegrationSettingsScreen> {
+  final _qrzApiKeyController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _qrzApiKeyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final key = await ref.read(settingsRepositoryProvider).loadQrzApiKey();
+    if (mounted) {
+      setState(() {
+        _qrzApiKeyController.text = key;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(settingsRepositoryProvider)
+          .saveQrzApiKey(_qrzApiKeyController.text);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(context.l10n.logbookSettingsSaved)),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _pasteApiKey() async {
+    final data = await Clipboard.getData('text/plain');
+    final text = data?.text?.trim();
+    if (text != null && text.isNotEmpty) {
+      setState(() => _qrzApiKeyController.text = text);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final disabled = _loading || _saving;
+    return Scaffold(
+      appBar: AppBar(title: Text(l10n.logbookUploads)),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_loading) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 16),
+          ],
+          _CardSection(
+            title: 'QRZ',
+            children: [
+              TextField(
+                controller: _qrzApiKeyController,
+                enabled: !disabled,
+                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: l10n.qrzApiKey,
+                  helperText: l10n.qrzApiKeyHint,
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.content_paste),
+                    tooltip: l10n.paste,
+                    onPressed: disabled ? null : _pasteApiKey,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: disabled ? null : _save,
+                  icon: _saving
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(l10n.save),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _PlaceholderCard(
+            title: 'LoTW',
+            text: l10n.lotwTqslRequired,
+            icon: Icons.lock_outline,
           ),
         ],
       ),
@@ -3591,6 +3704,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   bool _isAudioPlaying = false;
   String? _audioPlaybackError;
   bool _retrying = false;
+  bool _qrzUploading = false;
 
   @override
   void initState() {
@@ -3637,28 +3751,48 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final qsoId = widget.draft.id;
+    final qrzUploadState = qsoId == null
+        ? null
+        : ref.watch(qrzUploadProvider(qsoId));
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.qsoReview)),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          // 状态切换：failed 仅由系统设置，不在可选项中
-          SegmentedButton<LogStatus>(
-            segments: LogStatus.values
-                .where((s) => s != LogStatus.failed)
-                .map(
-                  (s) => ButtonSegment<LogStatus>(
-                    value: s,
-                    label: Text(_statusLabel(context, s)),
+          if (status == LogStatus.exported)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _StatusChip(status: status),
+            )
+          else
+            DropdownButtonFormField<LogStatus>(
+              initialValue: status,
+              decoration: InputDecoration(labelText: l10n.status),
+              items: [
+                if (status == LogStatus.failed)
+                  DropdownMenuItem(
+                    value: LogStatus.failed,
+                    enabled: false,
+                    child: Text(_statusLabel(context, LogStatus.failed)),
                   ),
-                )
-                .toList(),
-            selected: {status == LogStatus.failed ? LogStatus.draft : status},
-            onSelectionChanged: (selected) {
-              setState(() => status = selected.first);
-            },
-          ),
+                for (final editableStatus in const [
+                  LogStatus.draft,
+                  LogStatus.needsReview,
+                  LogStatus.confirmed,
+                ])
+                  DropdownMenuItem(
+                    value: editableStatus,
+                    child: Text(_statusLabel(context, editableStatus)),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => status = value);
+                }
+              },
+            ),
           // 失败状态：错误卡片 + 重试按钮
           if (status == LogStatus.failed) ...[
             const SizedBox(height: 12),
@@ -3720,6 +3854,50 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               title: l10n.needsReview,
               text: _errorLabel(context, widget.draft.errorMessage!),
               icon: Icons.info_outline,
+            ),
+          ],
+          if (qsoId != null) ...[
+            const SizedBox(height: 16),
+            _CardSection(
+              title: l10n.logbookUploads,
+              children: [
+                qrzUploadState!.when(
+                  skipLoadingOnRefresh: false,
+                  data: (entry) => _LogbookUploadRow(
+                    title: 'QRZ',
+                    status: entry?.status,
+                    detail:
+                        entry?.status == LogbookUploadStatus.pending &&
+                            !_qrzUploading
+                        ? l10n.qrzUploadPendingUnknown
+                        : entry?.errorMessage ?? entry?.remoteId,
+                    busy: _qrzUploading,
+                    enabled:
+                        !_qrzUploading &&
+                        entry?.status != LogbookUploadStatus.succeeded &&
+                        entry?.status != LogbookUploadStatus.stale &&
+                        (status == LogStatus.confirmed ||
+                            status == LogStatus.exported),
+                    disabledReason:
+                        entry?.status == LogbookUploadStatus.succeeded
+                        ? l10n.uploadSucceeded
+                        : entry?.status == LogbookUploadStatus.stale
+                        ? l10n.logbookUploadStale
+                        : (status == LogStatus.confirmed ||
+                              status == LogStatus.exported)
+                        ? null
+                        : l10n.confirmBeforeUpload,
+                    onUpload: _uploadToQrz,
+                  ),
+                  error: (error, stackTrace) => _UpdateStatusRow(
+                    icon: Icons.error_outline,
+                    text: error.toString(),
+                    isError: true,
+                  ),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                ),
+              ],
             ),
           ],
           const SizedBox(height: 16),
@@ -3983,7 +4161,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
           : QsoField(value: _mode!, userEdited: true),
       sentRst: _editedField(_sentRstController.text),
       receivedRst: _editedField(_receivedRstController.text),
-      status: status,
+      status: status == LogStatus.exported ? LogStatus.confirmed : status,
       name: _optionalEditedField(_nameController.text),
       qth: _optionalEditedField(_qthController.text),
       notes: _optionalEditedField(_notesController.text),
@@ -3993,6 +4171,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       audioPath: _audioPath,
       originalAudioDeleted: _originalAudioDeleted,
       rawTranscript: _rawTranscript,
+      updatedAt: draft.updatedAt,
     );
   }
 
@@ -4036,6 +4215,171 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _retrying = false);
+    }
+  }
+
+  Future<void> _uploadToQrz() async {
+    final qsoId = widget.draft.id;
+    if (qsoId == null || _qrzUploading) {
+      return;
+    }
+    final l10n = context.l10n;
+    if (!_validateFrequency(l10n)) {
+      return;
+    }
+    final updated = _buildDraft();
+    if (updated.status != LogStatus.confirmed &&
+        updated.status != LogStatus.exported) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.confirmBeforeUpload)));
+      return;
+    }
+    if (!updated.hasRequiredFields) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.requiredFieldsMissing)));
+      return;
+    }
+
+    setState(() => _qrzUploading = true);
+    final repository = ref.read(logbookUploadRepositoryProvider);
+    try {
+      final existing = await repository.findUpload(
+        qsoId: qsoId,
+        logbook: ExternalLogbook.qrz,
+      );
+      if (existing?.status == LogbookUploadStatus.succeeded ||
+          existing?.status == LogbookUploadStatus.stale) {
+        if (mounted) {
+          final message = existing?.status == LogbookUploadStatus.stale
+              ? l10n.logbookUploadStale
+              : l10n.uploadSucceeded;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+        }
+        return;
+      }
+
+      final retryPending = existing?.status == LogbookUploadStatus.pending;
+      if (retryPending) {
+        if (!mounted) return;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(l10n.pending),
+            content: Text(l10n.qrzUploadPendingUnknown),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: Text(
+                  MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(l10n.qrzConfirmPendingRetry),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true || !mounted) return;
+      }
+
+      final savedId = await ref.read(qsoLogProvider.notifier).save(updated);
+      final persisted = await ref.read(qsoRepositoryProvider).findQso(savedId);
+      if (persisted == null) {
+        throw StateError('saved_qso_not_found');
+      }
+      if (mounted) {
+        setState(() => status = persisted.status);
+      }
+      final apiKey = await ref.read(settingsRepositoryProvider).loadQrzApiKey();
+      if (apiKey.trim().isEmpty) {
+        throw const QrzUploadException(QrzUploadFailureReason.missingApiKey);
+      }
+      final started = await repository.saveUpload(
+        qsoId: qsoId,
+        logbook: ExternalLogbook.qrz,
+        status: LogbookUploadStatus.pending,
+        allowPendingRetry: retryPending,
+      );
+      if (!started) {
+        final blocked = await repository.findUpload(
+          qsoId: qsoId,
+          logbook: ExternalLogbook.qrz,
+        );
+        if (mounted) {
+          final message = switch (blocked?.status) {
+            LogbookUploadStatus.succeeded => l10n.uploadSucceeded,
+            LogbookUploadStatus.stale => l10n.logbookUploadStale,
+            LogbookUploadStatus.pending => l10n.qrzUploadPendingUnknown,
+            LogbookUploadStatus.failed || null => l10n.qrzUploadFailed,
+          };
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+        }
+        return;
+      }
+      ref.invalidate(qrzUploadProvider(qsoId));
+
+      final result = await ref
+          .read(qrzLogbookUploadServiceProvider)
+          .upload(apiKey: apiKey, qso: persisted);
+      await repository.saveUpload(
+        qsoId: qsoId,
+        logbook: ExternalLogbook.qrz,
+        status: LogbookUploadStatus.succeeded,
+        remoteId: result.remoteId,
+        uploadedQso: persisted,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.qrzUploadSucceeded)));
+      }
+    } on QrzUploadException catch (error) {
+      final message = _qrzUploadErrorLabel(l10n, error);
+      final definitelyFailed = switch (error.reason) {
+        QrzUploadFailureReason.missingApiKey ||
+        QrzUploadFailureReason.requiredFieldsMissing ||
+        QrzUploadFailureReason.rejected => true,
+        QrzUploadFailureReason.httpError ||
+        QrzUploadFailureReason.networkError ||
+        QrzUploadFailureReason.badResponse => false,
+      };
+      if (definitelyFailed) {
+        await repository.saveUpload(
+          qsoId: qsoId,
+          logbook: ExternalLogbook.qrz,
+          status: LogbookUploadStatus.failed,
+          errorMessage: message,
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${l10n.errorDetail}: $error'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      ref.invalidate(qrzUploadProvider(qsoId));
+      if (mounted) {
+        setState(() => _qrzUploading = false);
+      }
     }
   }
 
@@ -4319,130 +4663,48 @@ class _StatusPanel extends StatelessWidget {
     final minutes = elapsed.inMinutes.toString().padLeft(2, '0');
     final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
     final osc = Theme.of(context).extension<OscilloscopeColors>()!;
-    return RepaintBoundary(
-      child: Semantics(
-        label:
-            '$title ${active ? "recording" : "idle"} $minutes minutes $seconds seconds',
-        child: Card(
-          color: active
-              ? osc.phosphor.withAlpha(20)
-              : Theme.of(context).colorScheme.surface,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: _ScopeGridPainter(
-                      gridColor: osc.gridLine,
-                      traceColor: active
-                          ? osc.phosphor.withAlpha(120)
-                          : osc.trace.withAlpha(40),
-                      animateSeed: active ? elapsed.inMilliseconds / 1000 : 0,
-                      active: active,
+    final l10n = context.l10n;
+    return Semantics(
+      label:
+          '$title, ${active ? l10n.recording : l10n.startQso}, $minutes:$seconds',
+      child: Card(
+        color: active
+            ? osc.phosphor.withAlpha(20)
+            : Theme.of(context).colorScheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    active ? Icons.fiber_manual_record : Icons.radio_button_off,
+                    size: 14,
+                    color: active ? osc.rec : osc.gridLine,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    active ? '${l10n.recording} · $title' : title,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: active ? osc.amber : null,
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '$minutes:$seconds',
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  color: active ? osc.phosphor : null,
                 ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 2,
-                    color: active ? osc.phosphor : osc.gridLine,
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.circle,
-                            size: 10,
-                            color: active ? osc.rec : osc.gridLine,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            active ? 'REC · $title' : title,
-                            style: Theme.of(context).textTheme.labelLarge
-                                ?.copyWith(color: active ? osc.amber : null),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        '$minutes:$seconds',
-                        style: Theme.of(context).textTheme.displayMedium
-                            ?.copyWith(color: active ? osc.phosphor : null),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-}
-
-class _ScopeGridPainter extends CustomPainter {
-  _ScopeGridPainter({
-    required this.gridColor,
-    required this.traceColor,
-    required this.animateSeed,
-    required this.active,
-  });
-
-  final Color gridColor;
-  final Color traceColor;
-  final double animateSeed;
-  final bool active;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = gridColor.withAlpha(60)
-      ..strokeWidth = 0.5;
-    const gridStep = 12.0;
-    for (double x = gridStep; x < size.width; x += gridStep) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-    for (double y = gridStep; y < size.height; y += gridStep) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-    if (!active) return;
-    final tracePaint = Paint()
-      ..color = traceColor
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    final path = Path();
-    final baseline = size.height * 0.5;
-    final amplitude = size.height * 0.18;
-    for (double x = 0; x <= size.width; x += 2) {
-      final t = (x / size.width) * 4 * math.pi + animateSeed * 4;
-      final y =
-          baseline +
-          amplitude * 0.6 * (0.5 * math.sin(t) + 0.5 * math.sin(t * 1.7));
-      if (x == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    canvas.drawPath(path, tracePaint);
-  }
-
-  @override
-  bool shouldRepaint(_ScopeGridPainter oldDelegate) =>
-      oldDelegate.animateSeed != animateSeed ||
-      oldDelegate.active != active ||
-      oldDelegate.gridColor != gridColor ||
-      oldDelegate.traceColor != traceColor;
 }
 
 class _TranscriptCard extends ConsumerWidget {
@@ -4812,6 +5074,103 @@ class _LogListItem extends StatelessWidget {
   }
 }
 
+class _LogbookUploadRow extends StatelessWidget {
+  const _LogbookUploadRow({
+    required this.title,
+    required this.status,
+    required this.detail,
+    required this.busy,
+    required this.enabled,
+    required this.onUpload,
+    this.disabledReason,
+  });
+
+  final String title;
+  final LogbookUploadStatus? status;
+  final String? detail;
+  final bool busy;
+  final bool enabled;
+  final VoidCallback onUpload;
+  final String? disabledReason;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isFailed = status == LogbookUploadStatus.failed;
+    final detailText = disabledReason ?? detail;
+    final details = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          _logbookUploadIcon(status),
+          color: isFailed ? colorScheme.error : null,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                _logbookUploadStatusLabel(context, status),
+                style: TextStyle(color: isFailed ? colorScheme.error : null),
+              ),
+              if (detailText != null && detailText.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  detailText,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: isFailed
+                        ? colorScheme.error
+                        : colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+    final uploadButton = OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+      onPressed: enabled ? onUpload : null,
+      icon: busy
+          ? const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.cloud_upload_outlined),
+      label: Text(
+        status == LogbookUploadStatus.pending
+            ? context.l10n.retry
+            : context.l10n.upload,
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stack =
+            constraints.maxWidth < 360 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.2;
+        if (stack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [details, const SizedBox(height: 12), uploadButton],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: details),
+            const SizedBox(width: 12),
+            uploadButton,
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _SettingsTile extends StatelessWidget {
   const _SettingsTile({
     required this.icon,
@@ -4827,19 +5186,13 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(6),
-          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: onTap,
     );
   }
 }
@@ -4859,22 +5212,14 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Icon(icon, size: 42),
-              const SizedBox(height: 12),
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(subtitle, textAlign: TextAlign.center),
-            ],
-          ),
-        ),
+    return Card(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Icon(icon, size: 32),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
       ),
     );
   }
@@ -5177,13 +5522,26 @@ class _TwoColumnFields extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: left),
-        const SizedBox(width: 10),
-        Expanded(child: right),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stack =
+            constraints.maxWidth < 440 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.2;
+        if (stack) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [left, const SizedBox(height: 12), right],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: left),
+            const SizedBox(width: 10),
+            Expanded(child: right),
+          ],
+        );
+      },
     );
   }
 }
@@ -5774,6 +6132,43 @@ String _errorLabel(BuildContext context, String error) {
     'structuring_response_missing_json' => l10n.structuringResponseMissingJson,
     'required_qso_fields_missing' => l10n.requiredFieldsMissing,
     _ => error,
+  };
+}
+
+String _qrzUploadErrorLabel(AppLocalizations l10n, QrzUploadException error) {
+  return switch (error.reason) {
+    QrzUploadFailureReason.missingApiKey => l10n.qrzApiKeyRequired,
+    QrzUploadFailureReason.requiredFieldsMissing => l10n.requiredFieldsMissing,
+    QrzUploadFailureReason.httpError =>
+      '${l10n.qrzUploadFailed}: ${error.statusCode ?? ''}',
+    QrzUploadFailureReason.networkError => l10n.updateNetworkFailed,
+    QrzUploadFailureReason.rejected =>
+      '${l10n.qrzUploadRejected}: ${error.message ?? ''}',
+    QrzUploadFailureReason.badResponse => l10n.updateBadResponse,
+  };
+}
+
+IconData _logbookUploadIcon(LogbookUploadStatus? status) {
+  return switch (status) {
+    LogbookUploadStatus.pending => Icons.hourglass_empty,
+    LogbookUploadStatus.succeeded => Icons.check_circle_outline,
+    LogbookUploadStatus.failed => Icons.error_outline,
+    LogbookUploadStatus.stale => Icons.edit_note,
+    null => Icons.cloud_upload_outlined,
+  };
+}
+
+String _logbookUploadStatusLabel(
+  BuildContext context,
+  LogbookUploadStatus? status,
+) {
+  final l10n = context.l10n;
+  return switch (status) {
+    LogbookUploadStatus.pending => l10n.pending,
+    LogbookUploadStatus.succeeded => l10n.uploadSucceeded,
+    LogbookUploadStatus.failed => l10n.failed,
+    LogbookUploadStatus.stale => l10n.logbookUploadStale,
+    null => l10n.notUploaded,
   };
 }
 

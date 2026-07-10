@@ -8,6 +8,7 @@ import '../data/app_database.dart';
 import '../data/export_service.dart';
 import '../data/export_history_repository.dart';
 import '../data/import_repository.dart';
+import '../data/logbook_upload_repository.dart';
 import '../data/model_assignment_repository.dart';
 import '../data/model_repository.dart';
 import '../data/provider_repository.dart';
@@ -24,6 +25,7 @@ import '../services/local_audio_playback_service.dart';
 import '../services/qso_artifact_service.dart';
 import '../services/qso_intake_service.dart';
 import '../services/qso_processing_service.dart';
+import '../services/qrz_logbook_upload_service.dart';
 import '../services/qwen_realtime_speech_provider.dart';
 import '../services/record_audio_capture_service.dart';
 import '../services/release_info_service.dart';
@@ -59,6 +61,10 @@ final exportHistoryRepositoryProvider = Provider<ExportHistoryRepository>(
   (ref) => ExportHistoryRepository(ref.watch(appDatabaseProvider)),
 );
 
+final logbookUploadRepositoryProvider = Provider<LogbookUploadRepository>(
+  (ref) => LogbookUploadRepository(ref.watch(appDatabaseProvider)),
+);
+
 final tokenUsageRepositoryProvider = Provider<TokenUsageRepository>(
   (ref) => TokenUsageRepository(ref.watch(appDatabaseProvider)),
 );
@@ -66,6 +72,14 @@ final tokenUsageRepositoryProvider = Provider<TokenUsageRepository>(
 final exportServiceProvider = Provider<ExportService>(
   (ref) => ExportService(ref.watch(qsoRepositoryProvider)),
 );
+
+final qrzLogbookUploadServiceProvider = Provider<QrzLogbookUploadService>((
+  ref,
+) {
+  final service = QrzLogbookUploadService();
+  ref.onDispose(service.close);
+  return service;
+});
 
 final providerStructuringClientProvider = Provider<ProviderStructuringClient>(
   (ref) => ProviderStructuringClient(http.Client()),
@@ -313,6 +327,15 @@ final exportHistoryProvider = FutureProvider<List<ExportHistoryEntry>>(
   (ref) => ref.watch(exportHistoryRepositoryProvider).listExports(),
 );
 
+final qrzUploadProvider = FutureProvider.family<LogbookUploadEntry?, String>((
+  ref,
+  qsoId,
+) {
+  return ref
+      .watch(logbookUploadRepositoryProvider)
+      .findUpload(qsoId: qsoId, logbook: ExternalLogbook.qrz);
+});
+
 final localDataSummaryProvider = FutureProvider<LocalDataSummary>((ref) async {
   final retainedAudioCount = await ref
       .watch(qsoRepositoryProvider)
@@ -511,22 +534,6 @@ final setupCompletedProvider =
     AsyncNotifierProvider<SetupCompletedNotifier, bool>(
       SetupCompletedNotifier.new,
     );
-
-class WelcomeShownNotifier extends AsyncNotifier<bool> {
-  @override
-  Future<bool> build() {
-    return ref.watch(settingsRepositoryProvider).loadWelcomeShown();
-  }
-
-  Future<void> markShown() async {
-    state = const AsyncData(true);
-    await ref.read(settingsRepositoryProvider).saveWelcomeShown();
-  }
-}
-
-final welcomeShownProvider = AsyncNotifierProvider<WelcomeShownNotifier, bool>(
-  WelcomeShownNotifier.new,
-);
 
 class RecordingSessionNotifier extends Notifier<RecordingSessionState> {
   Timer? _timer;
