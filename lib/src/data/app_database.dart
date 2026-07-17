@@ -3,12 +3,15 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 class AppDatabase {
-  AppDatabase({Database? database}) : _database = database;
+  AppDatabase({Database? database, String? databasePath})
+    : _database = database,
+      _databasePath = databasePath;
 
   static const databaseName = 'qso_scribe.db';
   static const databaseVersion = 9;
 
   Database? _database;
+  final String? _databasePath;
 
   Future<Database> get instance async {
     final existing = _database;
@@ -16,8 +19,10 @@ class AppDatabase {
       return existing;
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(dir.path, databaseName);
+    final configuredPath = _databasePath;
+    final dbPath =
+        configuredPath ??
+        p.join((await getApplicationDocumentsDirectory()).path, databaseName);
     final opened = await openDatabase(
       dbPath,
       version: databaseVersion,

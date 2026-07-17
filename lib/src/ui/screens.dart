@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:convert';
 import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
@@ -9,7 +9,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/generated/app_localizations.dart';
@@ -516,18 +515,9 @@ class _StreamingTab extends ConsumerWidget {
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: () async {
-                final recorder = ref.read(recordingSessionProvider.notifier);
-                await recorder.start(TranscriptionMode.streaming);
-                final updatedSession = ref.read(recordingSessionProvider);
-                final startedAt = updatedSession.startedAt;
-                if (updatedSession.isRecording && startedAt != null) {
-                  ref
-                      .read(qsoCaptureProvider.notifier)
-                      .startQso(
-                        mode: TranscriptionMode.streaming,
-                        startedAt: startedAt,
-                      );
-                }
+                await ref
+                    .read(qsoCaptureProvider.notifier)
+                    .startRecordingQso(mode: TranscriptionMode.streaming);
               },
               icon: const Icon(Icons.refresh),
               label: Text(l10n.discardAndRestart),
@@ -541,12 +531,20 @@ class _StreamingTab extends ConsumerWidget {
               session: session,
               mode: TranscriptionMode.streaming,
               onStopped: (audioPath) async {
-                await ref
+                final generatedDraft = await ref
                     .read(qsoCaptureProvider.notifier)
                     .stopQsoStreaming(
                       audioPath: audioPath,
                       startedAt: session.startedAt,
                     );
+                if (generatedDraft.status == LogStatus.failed &&
+                    context.mounted) {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => QsoReviewScreen(draft: generatedDraft),
+                    ),
+                  );
+                }
               },
             ),
     );
@@ -591,14 +589,9 @@ class _RecordControls extends ConsumerWidget {
                     await onStopped(audioPath);
                   } else {
                     await HapticFeedback.selectionClick();
-                    await recorder.start(mode);
-                    final updatedSession = ref.read(recordingSessionProvider);
-                    final startedAt = updatedSession.startedAt;
-                    if (updatedSession.isRecording && startedAt != null) {
-                      ref
-                          .read(qsoCaptureProvider.notifier)
-                          .startQso(mode: mode, startedAt: startedAt);
-                    }
+                    await ref
+                        .read(qsoCaptureProvider.notifier)
+                        .startRecordingQso(mode: mode);
                   }
                 },
           icon: Icon(stopping ? Icons.stop : Icons.mic),
@@ -984,24 +977,14 @@ class ImportScreen extends ConsumerWidget {
                     .read(importJobsProvider.notifier)
                     .prepareAudioImport(path);
                 if (context.mounted) {
-                  if (importDraft.draft.status == LogStatus.failed) {
-                    // 识别失败：显示错误信息，不跳转到表单
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(l10n.audioImportManualReview),
-                        backgroundColor: Theme.of(context).colorScheme.error,
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => QsoReviewScreen(
+                        draft: importDraft.draft,
+                        importJobId: importDraft.jobId,
                       ),
-                    );
-                  } else {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => QsoReviewScreen(
-                          draft: importDraft.draft,
-                          importJobId: importDraft.jobId,
-                        ),
-                      ),
-                    );
-                  }
+                    ),
+                  );
                 }
               } catch (error) {
                 if (context.mounted) {
@@ -1305,6 +1288,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   }
 
   Future<void> _exportToFile() async {
+    final l10n = context.l10n;
     final service = ref.read(exportServiceProvider);
     final filter = _currentFilter();
     final generated = switch (_format) {
@@ -1312,28 +1296,29 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       _ExportFormat.csv => await service.exportCsv(filter),
       _ExportFormat.rawTranscript => await service.exportRawTranscript(filter),
     };
-    final dir = await getApplicationDocumentsDirectory();
-    final exportDir = Directory(p.join(dir.path, 'exports'));
-    if (!exportDir.existsSync()) {
-      await exportDir.create(recursive: true);
-    }
     final extension = switch (_format) {
       _ExportFormat.adif => 'adi',
       _ExportFormat.csv => 'csv',
       _ExportFormat.rawTranscript => 'txt',
     };
-    final path = p.join(
-      exportDir.path,
-      'qso_export_${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension',
+    final fileName =
+        'qso_export_${DateTime.now().toUtc().millisecondsSinceEpoch}.$extension';
+    final exportedPath = await FilePicker.platform.saveFile(
+      dialogTitle: l10n.exportLogs,
+      fileName: fileName,
+      type: FileType.custom,
+      allowedExtensions: [extension],
+      bytes: Uint8List.fromList(utf8.encode(generated.content)),
     );
-    final exportedFile = File(path).absolute;
-    await exportedFile.writeAsString(generated.content);
+    if (exportedPath == null) {
+      return;
+    }
     final repository = ref.read(exportHistoryRepositoryProvider);
     final filterSummary = _filterSummary();
     try {
       await repository.saveExport(
         format: extension,
-        filePath: exportedFile.path,
+        filePath: exportedPath,
         qsoCount: generated.qsoIds.length,
         filterSummary: filterSummary,
         confirmedQsoVersions: generated.confirmedQsoVersions,
@@ -1342,13 +1327,12 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       if (!mounted) {
         rethrow;
       }
-      final l10n = context.l10n;
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text('${l10n.exportHistory} / ${l10n.status}: ${l10n.failed}'),
           content: SelectableText(
-            '${l10n.exportedTo}: ${exportedFile.path}\n\n'
+            '${l10n.exportedTo}: $exportedPath\n\n'
             '${l10n.exportHistory} / ${l10n.status}: ${l10n.failed}\n\n'
             '${l10n.errorDetail}: $error',
           ),
@@ -1370,9 +1354,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${context.l10n.exportedTo}: ${exportedFile.path}'),
-      ),
+      SnackBar(content: Text('${l10n.exportedTo}: $exportedPath')),
     );
   }
 
@@ -6010,6 +5992,7 @@ String _captureWarningLabel(BuildContext context, String warning) {
   final l10n = context.l10n;
   return switch (warning) {
     'streaming_not_configured' => l10n.streamingAdapterNotConfigured,
+    'streaming_connection_failed' => l10n.streamingConnectionFailed,
     'no_streaming_transcript' => l10n.noStreamingTranscriptProduced,
     _ => warning,
   };
@@ -6123,6 +6106,8 @@ String _errorLabel(BuildContext context, String error) {
     'provider_not_openai_compatible_http' =>
       l10n.providerNotOpenAiCompatibleHttp,
     'audio_file_missing' => l10n.audioFileMissing,
+    'no_streaming_transcript' => l10n.noStreamingTranscriptProduced,
+    'streaming_connection_closed' => l10n.streamingConnectionClosed,
     'transcription_response_missing_text' =>
       l10n.transcriptionResponseMissingText,
     'assigned_structuring_provider_missing' =>

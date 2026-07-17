@@ -920,6 +920,18 @@ abstract class AppLocalizations {
   /// **'Real-time streaming adapter is not configured; finish the QSO and review manually'**
   String get streamingAdapterNotConfigured;
 
+  /// No description provided for @streamingConnectionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The real-time transcription connection failed, so recording did not start. Switch to recognition after QSO manually.'**
+  String get streamingConnectionFailed;
+
+  /// No description provided for @streamingConnectionClosed.
+  ///
+  /// In en, this message translates to:
+  /// **'The real-time transcription connection closed; the local recording was kept.'**
+  String get streamingConnectionClosed;
+
   /// No description provided for @noStreamingTranscriptProduced.
   ///
   /// In en, this message translates to:
@@ -1295,7 +1307,7 @@ abstract class AppLocalizations {
   /// No description provided for @apiKeyHint.
   ///
   /// In en, this message translates to:
-  /// **'Paste from provider console. Stored locally, never uploaded.'**
+  /// **'Paste from the provider console. The API key is stored locally and sent directly to the selected third-party provider when making AI requests.'**
   String get apiKeyHint;
 
   /// No description provided for @displayNameHint.

@@ -352,7 +352,7 @@ final localDataSummaryProvider = FutureProvider<LocalDataSummary>((ref) async {
   );
 });
 
-final audioCaptureServiceProvider = Provider<RecordAudioCaptureService>((ref) {
+final audioCaptureServiceProvider = Provider<AudioCaptureService>((ref) {
   final service = RecordAudioCaptureService();
   ref.onDispose(service.dispose);
   return service;
@@ -550,21 +550,34 @@ class RecordingSessionNotifier extends Notifier<RecordingSessionState> {
 
   void setSession(RecordingSessionState value) => state = value;
 
-  Future<void> start(TranscriptionMode mode) async {
+  void prepareStart(TranscriptionMode mode) {
+    _timer?.cancel();
     state = RecordingSessionState(
       isRecording: false,
       elapsed: Duration.zero,
       mode: mode,
       isProcessing: true,
     );
+  }
+
+  void cancelStart() {
+    state = RecordingSessionState(
+      isRecording: false,
+      elapsed: Duration.zero,
+      mode: state.mode,
+    );
+  }
+
+  Future<void> start(TranscriptionMode mode, {DateTime? startedAt}) async {
+    prepareStart(mode);
     try {
       await ref.read(audioCaptureServiceProvider).start();
-      final startedAt = DateTime.now();
+      final actualStartedAt = startedAt ?? DateTime.now();
       state = RecordingSessionState(
         isRecording: true,
         elapsed: Duration.zero,
         mode: mode,
-        startedAt: startedAt,
+        startedAt: actualStartedAt,
       );
       _timer?.cancel();
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -615,6 +628,13 @@ final recordingSessionProvider =
     );
 
 class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
+  QsoCaptureNotifier({
+    Future<SpeechTranscriptionProvider?> Function()? streamingProviderResolver,
+  }) : _streamingProviderResolver = streamingProviderResolver;
+
+  final Future<SpeechTranscriptionProvider?> Function()?
+  _streamingProviderResolver;
+
   @override
   Future<QsoCaptureState> build() async {
     // 释放时清理流式资源（WebSocket + 订阅），避免泄漏。
@@ -633,57 +653,89 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   int _segmentChannels = defaultPcmChannels;
   int _segmentSeq = 0;
   String? _partial;
+  String? _streamingFailure;
 
-  void startQso({
-    required TranscriptionMode mode,
-    required DateTime startedAt,
-  }) {
+  Future<bool> startRecordingQso({required TranscriptionMode mode}) async {
+    await future;
+    final currentSession = ref.read(recordingSessionProvider);
+    if (currentSession.isRecording || currentSession.isProcessing) {
+      return false;
+    }
     _finalSegments = [];
     _partial = null;
+    _streamingFailure = null;
     _segmentAudio.takeBytes();
     _segmentSeq = 0;
-    state = AsyncData(
-      QsoCaptureState(currentDraft: _emptyDraft(dateTime: startedAt)),
-    );
+    state = AsyncData(QsoCaptureState(currentDraft: _emptyDraft()));
+
+    final recorder = ref.read(recordingSessionProvider.notifier);
+    recorder.prepareStart(mode);
     if (mode == TranscriptionMode.streaming) {
-      _beginStreaming();
+      final ready = await _beginStreaming();
+      if (!ready) {
+        recorder.cancelStart();
+        return false;
+      }
+      if (_streamingFailure != null) {
+        await _stopStreaming();
+        recorder.cancelStart();
+        _updateCapture(
+          (state) =>
+              state.copyWith(warningMessage: 'streaming_connection_failed'),
+        );
+        return false;
+      }
     }
+
+    final startedAt = DateTime.now();
+    _updateCapture(
+      (current) =>
+          current.copyWith(currentDraft: _emptyDraft(dateTime: startedAt)),
+    );
+    await recorder.start(mode, startedAt: startedAt);
+    if (!ref.read(recordingSessionProvider).isRecording) {
+      if (mode == TranscriptionMode.streaming) {
+        await _stopStreaming();
+      }
+      return false;
+    }
+    return true;
   }
 
   // 解析并启动流式转写：仅支持实现了实时传输的供应商（当前为 Qwen）。
-  Future<void> _beginStreaming() async {
+  Future<bool> _beginStreaming() async {
     try {
-      final provider = await _resolveStreamingProvider();
+      final resolver = _streamingProviderResolver;
+      final provider = resolver == null
+          ? await _resolveStreamingProvider()
+          : await resolver();
       if (provider == null) {
         _updateCapture(
           (state) => state.copyWith(warningMessage: 'streaming_not_configured'),
         );
-        return;
+        return false;
       }
       _streamingProvider = provider;
+      _transcriptSub = provider.transcriptEvents.listen(
+        _onTranscript,
+        onError: _handleStreamingError,
+      );
       await provider.startSession();
       _frameSub = ref
           .read(audioCaptureServiceProvider)
           .frames
           .listen((frame) => _onStreamingAudioFrame(frame, provider));
-      _transcriptSub = provider.transcriptEvents.listen(
-        _onTranscript,
-        onError: (Object error) {
-          _addUnrecognizedSegment(error.toString());
-          if (!_finalSegments.any((segment) => segment.hasText)) {
-            _updateCapture(
-              (state) =>
-                  state.copyWith(warningMessage: 'no_streaming_transcript'),
-            );
-          }
-        },
-      );
-      _updateCapture((state) => state.copyWith(clearWarning: true));
+      if (_streamingFailure == null) {
+        _updateCapture((state) => state.copyWith(clearWarning: true));
+      }
+      return true;
     } catch (_) {
       await _stopStreaming();
       _updateCapture(
-        (state) => state.copyWith(warningMessage: 'streaming_not_configured'),
+        (state) =>
+            state.copyWith(warningMessage: 'streaming_connection_failed'),
       );
+      return false;
     }
   }
 
@@ -753,7 +805,29 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     _segmentSampleRate = frame.sampleRate;
     _segmentChannels = frame.channels;
     _segmentAudio.add(frame.bytes);
-    unawaited(provider.sendAudioFrame(frame));
+    unawaited(_sendStreamingAudioFrame(frame, provider));
+  }
+
+  Future<void> _sendStreamingAudioFrame(
+    AudioFrame frame,
+    SpeechTranscriptionProvider provider,
+  ) async {
+    try {
+      await provider.sendAudioFrame(frame);
+    } catch (error) {
+      _handleStreamingError(error);
+    }
+  }
+
+  void _handleStreamingError(Object error) {
+    _streamingFailure = error.toString();
+    _addUnrecognizedSegment(error.toString());
+    if (ref.read(failureHandlingProvider) == FailureHandling.alert &&
+        !_finalSegments.any((segment) => segment.hasText)) {
+      _updateCapture(
+        (state) => state.copyWith(warningMessage: 'no_streaming_transcript'),
+      );
+    }
   }
 
   void _onTranscript(TranscriptSegment segment) {
@@ -876,15 +950,33 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       _addUnrecognizedSegment();
     }
     final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
+    final hasTranscript = rawText.trim().isNotEmpty;
     final latest = await future;
     var draft = latest.currentDraft.copyWith(
       audioPath: audioPath,
-      rawTranscript: rawText.trim().isEmpty ? null : rawText,
+      rawTranscript: hasTranscript ? rawText : null,
+      clearRawTranscript: !hasTranscript,
       dateTime: QsoField(
         value: startedAt ?? latest.currentDraft.dateTime.value,
       ),
-      status: LogStatus.draft,
+      status: hasTranscript ? LogStatus.draft : LogStatus.failed,
+      errorMessage: hasTranscript
+          ? _streamingFailure
+          : _streamingFailure ?? 'no_streaming_transcript',
     );
+    if (!hasTranscript) {
+      final showWarning =
+          ref.read(failureHandlingProvider) == FailureHandling.alert;
+      state = AsyncData(
+        latest.copyWith(
+          currentDraft: draft,
+          pendingStructuring: false,
+          warningMessage: showWarning ? 'no_streaming_transcript' : null,
+          clearWarning: !showWarning,
+        ),
+      );
+      return draft;
+    }
     draft = await ref
         .read(qsoIntakeServiceProvider)
         .applyRecognitionRetention(draft);
@@ -920,7 +1012,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
 
     final audioPath = current.currentDraft.audioPath;
     final dateTime = current.currentDraft.dateTime.value;
-    final draft = await ref
+    final structuredDraft = await ref
         .read(qsoIntakeServiceProvider)
         .reviewDraftFromText(
           rawText,
@@ -928,6 +1020,9 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
           dateTime: dateTime,
           originalAudioDeleted: current.currentDraft.originalAudioDeleted,
         );
+    final draft = _streamingFailure == null
+        ? structuredDraft
+        : structuredDraft.copyWith(errorMessage: _streamingFailure);
     _finalSegments = [];
     _segmentAudio.takeBytes();
     state = AsyncData(

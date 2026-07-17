@@ -24,11 +24,16 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
     required String apiKey,
     required String modelName,
     this.language,
+    String webSocketUrl = _qwenRealtimeWsUrl,
+    this.readyTimeout = const Duration(seconds: 10),
   }) : _apiKey = apiKey,
-       _modelName = modelName;
+       _modelName = modelName,
+       _webSocketUrl = webSocketUrl;
 
   final String _apiKey;
   final String _modelName;
+  final String _webSocketUrl;
+  final Duration readyTimeout;
 
   // 语种提示；为 null 时不指定，交由服务端自动检测（与文件转写一致）。
   final String? language;
@@ -36,8 +41,10 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
   WebSocket? _socket;
   int _eventSeq = 0;
   bool _stopped = false;
+  bool _connectionFailed = false;
+  bool _sessionFinished = false;
   final _stopCompleter = Completer<void>();
-  // 等待服务端确认 session 配置生效（session.created/session.updated）。
+  // 等待服务端通过 session.updated 确认客户端配置已生效。
   final _readyCompleter = Completer<void>();
   final _transcriptController = StreamController<TranscriptSegment>.broadcast();
 
@@ -48,36 +55,54 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
   Stream<TranscriptSegment> get transcriptEvents =>
       _transcriptController.stream;
 
-  String get _wsUrl => '$_qwenRealtimeWsUrl?model=$_modelName';
+  String get _wsUrl => '$_webSocketUrl?model=$_modelName';
 
   @override
   Future<void> startSession() async {
-    _socket = await WebSocket.connect(
-      _wsUrl,
-      headers: {'Authorization': 'Bearer $_apiKey'},
-    );
-    _send(_buildSessionUpdate());
-    _socket!.listen(
-      _onData,
-      onError: (Object error) => _abort(error),
-      onDone: () {
-        // 连接关闭时解除所有等待，避免上层永久挂起。
-        if (!_readyCompleter.isCompleted) {
-          _readyCompleter.complete();
-        }
-        if (!_stopCompleter.isCompleted) {
-          _stopCompleter.complete();
-        }
-      },
-      cancelOnError: true,
-    );
-    // 等待服务端确认 session 配置生效后再返回，确保 VAD 配置按客户端设置生效，
-    // 避免首批音频按默认配置（threshold 0.2 / silence 800ms）处理。
-    // 超时保护：网络异常未收到确认时也不永久挂起。
-    await _readyCompleter.future.timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {},
-    );
+    try {
+      _socket = await WebSocket.connect(
+        _wsUrl,
+        headers: {'Authorization': 'Bearer $_apiKey'},
+      );
+      _send(_buildSessionUpdate());
+      _socket!.listen(
+        _onData,
+        onError: _abort,
+        onDone: () {
+          final closedBeforeReady = !_readyCompleter.isCompleted;
+          if (!_readyCompleter.isCompleted) {
+            _readyCompleter.completeError(
+              StateError('streaming_closed_before_ready'),
+            );
+          } else if (!_stopped && !_sessionFinished && !_connectionFailed) {
+            _connectionFailed = true;
+            if (!_transcriptController.isClosed) {
+              _transcriptController.addError(
+                StateError('streaming_connection_closed'),
+              );
+            }
+          }
+          if (!_stopCompleter.isCompleted) {
+            _stopCompleter.complete();
+          }
+          if (closedBeforeReady) {
+            _connectionFailed = true;
+          }
+        },
+        cancelOnError: true,
+      );
+      // 等待服务端确认 session 配置生效后再返回，确保 VAD 配置按客户端设置生效，
+      // 避免首批音频按默认配置（threshold 0.2 / silence 800ms）处理。
+      // 超时或就绪前断开都必须向上抛出，避免未建立实时会话时启动录音。
+      await _readyCompleter.future.timeout(readyTimeout);
+    } catch (_) {
+      _connectionFailed = true;
+      if (!_stopCompleter.isCompleted) {
+        _stopCompleter.complete();
+      }
+      await _socket?.close();
+      rethrow;
+    }
   }
 
   Map<String, Object?> _buildSessionUpdate() {
@@ -102,7 +127,10 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
   @override
   Future<void> sendAudioFrame(AudioFrame frame) async {
     final socket = _socket;
-    if (_stopped || socket == null || socket.readyState != WebSocket.open) {
+    if (_stopped ||
+        _connectionFailed ||
+        socket == null ||
+        socket.readyState != WebSocket.open) {
       return;
     }
     _send({
@@ -119,7 +147,9 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
     }
     _stopped = true;
     final socket = _socket;
-    if (socket != null && socket.readyState == WebSocket.open) {
+    if (!_connectionFailed &&
+        socket != null &&
+        socket.readyState == WebSocket.open) {
       _send({'type': 'session.finish', 'event_id': _nextEventId()});
     }
     await _stopCompleter.future.timeout(
@@ -150,12 +180,14 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
       }
       switch (type) {
         case 'session.created':
+          return;
         case 'session.updated':
           if (!_readyCompleter.isCompleted) {
             _readyCompleter.complete();
           }
           return;
         case 'session.finished':
+          _sessionFinished = true;
           if (!_stopCompleter.isCompleted) {
             _stopCompleter.complete();
           }
@@ -189,14 +221,18 @@ class QwenRealtimeSpeechProvider implements SpeechTranscriptionProvider {
     return error?.toString() ?? 'unknown';
   }
 
-  void _abort(Object error) {
+  void _abort(Object error, [StackTrace? stackTrace]) {
+    _connectionFailed = true;
     if (!_readyCompleter.isCompleted) {
-      _readyCompleter.complete();
+      _readyCompleter.completeError(error, stackTrace);
     }
     if (!_stopCompleter.isCompleted) {
       _stopCompleter.complete();
     }
-    _transcriptController.addError(error);
+    if (!_transcriptController.isClosed) {
+      _transcriptController.addError(error, stackTrace);
+    }
+    unawaited(_socket?.close());
   }
 
   void _send(Map<String, Object?> event) {

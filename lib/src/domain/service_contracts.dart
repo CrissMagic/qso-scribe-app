@@ -16,6 +16,16 @@ class AudioFrame {
   final DateTime timestamp;
 }
 
+abstract interface class AudioCaptureService {
+  Stream<AudioFrame> get frames;
+
+  Future<void> start();
+
+  Future<String?> stop();
+
+  Future<void> dispose();
+}
+
 abstract interface class SpeechTranscriptionProvider {
   Stream<TranscriptSegment> get transcriptEvents;
 

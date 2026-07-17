@@ -435,6 +435,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'Real-time streaming adapter is not configured; finish the QSO and review manually';
 
   @override
+  String get streamingConnectionFailed =>
+      'The real-time transcription connection failed, so recording did not start. Switch to recognition after QSO manually.';
+
+  @override
+  String get streamingConnectionClosed =>
+      'The real-time transcription connection closed; the local recording was kept.';
+
+  @override
   String get noStreamingTranscriptProduced =>
       'No live transcript was produced for this QSO; review audio or fill fields manually';
 
@@ -638,7 +646,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get apiKeyHint =>
-      'Paste from provider console. Stored locally, never uploaded.';
+      'Paste from the provider console. The API key is stored locally and sent directly to the selected third-party provider when making AI requests.';
 
   @override
   String get displayNameHint => 'Any label you recognize, e.g. My OpenAI';

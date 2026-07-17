@@ -420,6 +420,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get streamingAdapterNotConfigured => '实时流式转写适配器尚未配置；可结束后进入复核并手动补全';
 
   @override
+  String get streamingConnectionFailed => '实时转写连接失败，录音未开始；请手动切换为结束后识别。';
+
+  @override
+  String get streamingConnectionClosed => '实时转写连接已中断，本地录音已保留。';
+
+  @override
   String get noStreamingTranscriptProduced => '本次通联未产生实时转写，请回放音频或手动补全字段';
 
   @override
@@ -610,7 +616,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get baseUrlHint => '通常以 /v1 结尾,如 https://api.openai.com/v1';
 
   @override
-  String get apiKeyHint => '从供应商控制台复制,本地存储,不会上传';
+  String get apiKeyHint => '从供应商控制台复制。API Key 保存在本地；发起 AI 请求时会直接发送给所选第三方供应商。';
 
   @override
   String get displayNameHint => '随便起一个你认得出的名字';
