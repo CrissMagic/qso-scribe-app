@@ -11,6 +11,117 @@ import '../domain/provider_catalog.dart';
 import 'ai_provider_clients.dart';
 import 'heuristic_qso_structuring_service.dart';
 
+class QsoStructuredDraftParser {
+  const QsoStructuredDraftParser();
+
+  QsoDraft parse(
+    Map<String, Object?> json, {
+    required String rawText,
+    String? audioPath,
+    DateTime? dateTime,
+  }) {
+    final sourceTexts = _sourceTexts(json['sourceText']);
+    final hasProvidedDateTime = dateTime != null;
+    final parsedDateTime =
+        dateTime ?? DateTime.tryParse(_stringValue(json['dateTime']));
+    return QsoDraft(
+      callsign: _fieldFromJson(json, sourceTexts, 'callsign'),
+      dateTime: QsoField(
+        value: parsedDateTime,
+        confidence: hasProvidedDateTime
+            ? 1
+            : _confidenceFromJson(json, 'dateTime'),
+        sourceText: hasProvidedDateTime
+            ? null
+            : _sourceTextFor(sourceTexts, 'dateTime'),
+      ),
+      band: _fieldFromJson(json, sourceTexts, 'band'),
+      frequency: _fieldFromJson(json, sourceTexts, 'frequency'),
+      mode: _fieldFromJson(json, sourceTexts, 'mode'),
+      sentRst: _fieldFromJson(json, sourceTexts, 'sentRst'),
+      receivedRst: _fieldFromJson(json, sourceTexts, 'receivedRst'),
+      status: LogStatus.needsReview,
+      name: _optionalFieldFromJson(json, sourceTexts, 'name'),
+      qth: _optionalFieldFromJson(json, sourceTexts, 'qth'),
+      notes: _optionalFieldFromJson(json, sourceTexts, 'notes'),
+      rig: _optionalFieldFromJson(json, sourceTexts, 'rig'),
+      antenna: _optionalFieldFromJson(json, sourceTexts, 'antenna'),
+      power: _optionalFieldFromJson(json, sourceTexts, 'power'),
+      audioPath: audioPath,
+      rawTranscript: rawText,
+    );
+  }
+
+  QsoField<String> _fieldFromJson(
+    Map<String, Object?> json,
+    Map<String, Object?> sourceTexts,
+    String key,
+  ) {
+    return QsoField(
+      value: _stringValue(json[key]).trim(),
+      confidence: _confidenceFromJson(json, key),
+      sourceText: _sourceTextFor(sourceTexts, key),
+    );
+  }
+
+  QsoField<String>? _optionalFieldFromJson(
+    Map<String, Object?> json,
+    Map<String, Object?> sourceTexts,
+    String key,
+  ) {
+    final value = _stringValue(json[key]).trim();
+    if (value.isEmpty) {
+      return null;
+    }
+    return QsoField(
+      value: value,
+      confidence: _confidenceFromJson(json, key),
+      sourceText: _sourceTextFor(sourceTexts, key),
+    );
+  }
+
+  double _confidenceFromJson(Map<String, Object?> json, String key) {
+    final confidences = json['confidence'];
+    if (confidences != null && confidences is! Map) {
+      throw const FormatException('invalid_structuring_confidence');
+    }
+    final value = confidences is Map ? confidences[key] : null;
+    if (value is num) {
+      return value.toDouble().clamp(0, 1).toDouble();
+    }
+    return 0.75;
+  }
+
+  Map<String, Object?> _sourceTexts(Object? value) {
+    if (value == null) {
+      return const {};
+    }
+    if (value is! Map) {
+      throw const FormatException('invalid_structuring_source_text');
+    }
+    return Map<String, Object?>.from(value);
+  }
+
+  String? _sourceTextFor(Map<String, Object?> sourceTexts, String key) {
+    final value = sourceTexts[key];
+    if (value == null) {
+      return null;
+    }
+    if (value is! String) {
+      throw const FormatException('invalid_structuring_source_text');
+    }
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  String _stringValue(Object? value) {
+    if (value == null) {
+      return '';
+    }
+    return value.toString();
+  }
+}
+
 class QsoProcessingService {
   QsoProcessingService({
     required ProviderRepository providerRepository,
@@ -114,87 +225,12 @@ class QsoProcessingService {
       usage: result.usage,
     );
     final structured = jsonDecode(result.content) as Map<String, Object?>;
-    return _draftFromStructuredJson(
+    return const QsoStructuredDraftParser().parse(
       structured,
       rawText: rawText,
       audioPath: audioPath,
       dateTime: dateTime,
     );
-  }
-
-  QsoDraft _draftFromStructuredJson(
-    Map<String, Object?> json, {
-    required String rawText,
-    String? audioPath,
-    DateTime? dateTime,
-  }) {
-    final parsedDateTime =
-        dateTime ?? DateTime.tryParse(_stringValue(json['dateTime']));
-    return QsoDraft(
-      callsign: _fieldFromJson(json, 'callsign'),
-      dateTime: QsoField(
-        value: parsedDateTime,
-        confidence: _confidenceFromJson(json, 'dateTime'),
-        sourceText: rawText,
-      ),
-      band: _fieldFromJson(json, 'band'),
-      frequency: _fieldFromJson(json, 'frequency'),
-      mode: _fieldFromJson(json, 'mode'),
-      sentRst: _fieldFromJson(json, 'sentRst'),
-      receivedRst: _fieldFromJson(json, 'receivedRst'),
-      status: LogStatus.needsReview,
-      name: _optionalFieldFromJson(json, 'name'),
-      qth: _optionalFieldFromJson(json, 'qth'),
-      notes: _optionalFieldFromJson(json, 'notes'),
-      rig: _optionalFieldFromJson(json, 'rig'),
-      antenna: _optionalFieldFromJson(json, 'antenna'),
-      power: _optionalFieldFromJson(json, 'power'),
-      audioPath: audioPath,
-      rawTranscript: rawText,
-    );
-  }
-
-  QsoField<String> _fieldFromJson(Map<String, Object?> json, String key) {
-    return QsoField(
-      value: _stringValue(json[key]).trim(),
-      confidence: _confidenceFromJson(json, key),
-      sourceText: _stringValue(json['sourceText']).trim().isEmpty
-          ? null
-          : _stringValue(json['sourceText']).trim(),
-    );
-  }
-
-  QsoField<String>? _optionalFieldFromJson(
-    Map<String, Object?> json,
-    String key,
-  ) {
-    final value = _stringValue(json[key]).trim();
-    if (value.isEmpty) {
-      return null;
-    }
-    return QsoField(
-      value: value,
-      confidence: _confidenceFromJson(json, key),
-      sourceText: _stringValue(json['sourceText']).trim().isEmpty
-          ? null
-          : _stringValue(json['sourceText']).trim(),
-    );
-  }
-
-  double _confidenceFromJson(Map<String, Object?> json, String key) {
-    final confidences = json['confidence'] as Map<String, Object?>?;
-    final value = confidences?[key];
-    if (value is num) {
-      return value.toDouble().clamp(0, 1).toDouble();
-    }
-    return 0.75;
-  }
-
-  String _stringValue(Object? value) {
-    if (value == null) {
-      return '';
-    }
-    return value.toString();
   }
 
   Future<String> _transcribeAudio(String audioPath) async {
@@ -278,6 +314,7 @@ Extract one amateur radio QSO log from the transcript.
 Return JSON only. Use these keys: callsign, dateTime, band, frequency, mode, sentRst, receivedRst, name, qth, notes, rig, antenna, power, confidence, sourceText.
 dateTime must be ISO 8601 when explicitly present; otherwise use null.
 confidence must be an object with numeric 0-1 confidence for each extracted field.
+sourceText must be an object keyed by field name. For each extracted field, use a short exact excerpt from the transcript that supports the value; use null when no supporting excerpt exists.
 Prefer the operator's latest correction when the transcript contains a spoken correction.
 Do not invent missing required fields. Keep missing fields as empty strings or null.
 

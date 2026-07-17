@@ -400,6 +400,7 @@ class _AfterQsoTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final sessionQsos = ref.watch(qsoSessionProvider);
     return Scaffold(
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -425,6 +426,8 @@ class _AfterQsoTab extends ConsumerWidget {
               icon: Icons.info_outline,
             ),
           ],
+          const SizedBox(height: 16),
+          _CurrentSessionCard(qsos: sessionQsos),
         ],
       ),
       bottomNavigationBar: _RecordControls(
@@ -442,7 +445,10 @@ class _AfterQsoTab extends ConsumerWidget {
           if (context.mounted) {
             await Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => QsoReviewScreen(draft: generatedDraft),
+                builder: (_) => QsoReviewScreen(
+                  draft: generatedDraft,
+                  recordInSession: true,
+                ),
               ),
             );
           }
@@ -466,7 +472,7 @@ class _StreamingTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final pending = capture.pendingStructuring && !session.isRecording;
+    final sessionQsos = ref.watch(qsoSessionProvider);
     return Scaffold(
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -493,60 +499,339 @@ class _StreamingTab extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 16),
+          _RealtimeDraftCard(
+            draft: capture.currentDraft,
+            isStructuring: capture.isStructuring,
+          ),
+          const SizedBox(height: 16),
           _TranscriptCard(segments: transcript),
-          if (pending) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () async {
-                final generatedDraft = await ref
-                    .read(qsoCaptureProvider.notifier)
-                    .structureCapturedTranscript();
-                if (context.mounted) {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => QsoReviewScreen(draft: generatedDraft),
-                    ),
-                  );
-                }
-              },
-              icon: const Icon(Icons.auto_fix_high),
-              label: Text(l10n.aiProcess),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await ref
-                    .read(qsoCaptureProvider.notifier)
-                    .startRecordingQso(mode: TranscriptionMode.streaming);
-              },
-              icon: const Icon(Icons.refresh),
-              label: Text(l10n.discardAndRestart),
-            ),
-          ],
+          const SizedBox(height: 16),
+          _CurrentSessionCard(qsos: sessionQsos),
         ],
       ),
-      bottomNavigationBar: pending
-          ? null
-          : _RecordControls(
-              session: session,
-              mode: TranscriptionMode.streaming,
-              onStopped: (audioPath) async {
-                final generatedDraft = await ref
-                    .read(qsoCaptureProvider.notifier)
-                    .stopQsoStreaming(
-                      audioPath: audioPath,
-                      startedAt: session.startedAt,
-                    );
-                if (generatedDraft.status == LogStatus.failed &&
-                    context.mounted) {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => QsoReviewScreen(draft: generatedDraft),
-                    ),
-                  );
-                }
-              },
+      bottomNavigationBar: _RecordControls(
+        session: session,
+        mode: TranscriptionMode.streaming,
+        onStopped: (audioPath) async {
+          final generatedDraft = await ref
+              .read(qsoCaptureProvider.notifier)
+              .stopQsoStreaming(
+                audioPath: audioPath,
+                startedAt: session.startedAt,
+              );
+          if (context.mounted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => QsoReviewScreen(
+                  draft: generatedDraft,
+                  recordInSession: true,
+                ),
+              ),
+            );
+          }
+        },
+      ),
+    );
+  }
+}
+
+class _RealtimeDraftCard extends ConsumerWidget {
+  const _RealtimeDraftCard({required this.draft, required this.isStructuring});
+
+  final QsoDraft draft;
+  final bool isStructuring;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final bandOrFrequencyMissing =
+        draft.band.value.trim().isEmpty && draft.frequency.value.trim().isEmpty;
+    final fields = <_RealtimeDraftField>[
+      _RealtimeDraftField(
+        key: QsoFieldKey.callsign,
+        label: l10n.callsign,
+        field: draft.callsign,
+        requiredMissing: draft.callsign.value.trim().isEmpty,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.band,
+        label: l10n.band,
+        field: draft.band,
+        requiredMissing: bandOrFrequencyMissing,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.frequency,
+        label: l10n.frequency,
+        field: draft.frequency,
+        requiredMissing: bandOrFrequencyMissing,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.mode,
+        label: l10n.mode,
+        field: draft.mode,
+        requiredMissing: draft.mode.value.trim().isEmpty,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.sentRst,
+        label: l10n.sentRst,
+        field: draft.sentRst,
+        requiredMissing: draft.sentRst.value.trim().isEmpty,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.receivedRst,
+        label: l10n.receivedRst,
+        field: draft.receivedRst,
+        requiredMissing: draft.receivedRst.value.trim().isEmpty,
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.name,
+        label: l10n.name,
+        field: draft.name ?? const QsoField(value: ''),
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.qth,
+        label: l10n.qth,
+        field: draft.qth ?? const QsoField(value: ''),
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.rig,
+        label: l10n.rig,
+        field: draft.rig ?? const QsoField(value: ''),
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.antenna,
+        label: l10n.antenna,
+        field: draft.antenna ?? const QsoField(value: ''),
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.power,
+        label: l10n.power,
+        field: draft.power ?? const QsoField(value: ''),
+      ),
+      _RealtimeDraftField(
+        key: QsoFieldKey.notes,
+        label: l10n.notes,
+        field: draft.notes ?? const QsoField(value: ''),
+      ),
+    ];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.auto_fix_high),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n.currentStructuredDraft,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 4),
+            Text(
+              '${l10n.dateTime}: ${draft.dateTime.value == null ? '—' : _formatDateTime(draft.dateTime.value!)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (isStructuring) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+              const SizedBox(height: 4),
+              Text(
+                l10n.structuringInProgress,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 8),
+            for (final item in fields)
+              _RealtimeDraftFieldTile(
+                item: item,
+                onEdit: () => _editField(context, ref, item),
+                onReview: () => ref
+                    .read(qsoCaptureProvider.notifier)
+                    .reviewCurrentDraftField(item.key),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editField(
+    BuildContext context,
+    WidgetRef ref,
+    _RealtimeDraftField item,
+  ) async {
+    final controller = TextEditingController(text: item.field.value);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('${dialogContext.l10n.editField}: ${item.label}'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: Text(MaterialLocalizations.of(dialogContext).okButtonLabel),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) {
+      return;
+    }
+    ref
+        .read(qsoCaptureProvider.notifier)
+        .editCurrentDraftField(item.key, value);
+  }
+}
+
+class _RealtimeDraftField {
+  const _RealtimeDraftField({
+    required this.key,
+    required this.label,
+    required this.field,
+    this.requiredMissing = false,
+  });
+
+  final QsoFieldKey key;
+  final String label;
+  final QsoField<String> field;
+  final bool requiredMissing;
+
+  bool get needsReview {
+    final hasValue = field.value.trim().isNotEmpty;
+    return (hasValue && field.needsReview) ||
+        (requiredMissing && !field.reviewed && !field.userEdited);
+  }
+}
+
+class _RealtimeDraftFieldTile extends StatelessWidget {
+  const _RealtimeDraftFieldTile({
+    required this.item,
+    required this.onEdit,
+    required this.onReview,
+  });
+
+  final _RealtimeDraftField item;
+  final VoidCallback onEdit;
+  final VoidCallback onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final sourceText = item.field.sourceText?.trim();
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: item.needsReview ? colors.errorContainer : null,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: item.needsReview ? colors.error : colors.outlineVariant,
+        ),
+      ),
+      child: ListTile(
+        dense: true,
+        title: Text(item.label),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.field.value.trim().isEmpty ? '—' : item.field.value),
+            if (item.needsReview)
+              Text(
+                context.l10n.reviewRequired,
+                style: TextStyle(color: colors.error),
+              ),
+            if (item.needsReview && sourceText?.isNotEmpty == true)
+              Text(
+                '${context.l10n.sourceExcerpt}: $sourceText',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (item.needsReview)
+              IconButton(
+                tooltip: context.l10n.confirmFieldCorrect,
+                onPressed: onReview,
+                icon: const Icon(Icons.check_circle_outline),
+              ),
+            IconButton(
+              tooltip: context.l10n.editField,
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          ],
+        ),
+        onTap: onEdit,
+      ),
+    );
+  }
+}
+
+class _CurrentSessionCard extends StatelessWidget {
+  const _CurrentSessionCard({required this.qsos});
+
+  final List<QsoDraft> qsos;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.l10n.recentSession,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            if (qsos.isEmpty)
+              Text(context.l10n.noSessionQsos)
+            else
+              for (final qso in qsos.reversed)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.radio),
+                  title: Text(
+                    qso.callsign.value.trim().isEmpty
+                        ? '—'
+                        : qso.callsign.value,
+                  ),
+                  subtitle: Text(
+                    [
+                      qso.band.value,
+                      qso.frequency.value,
+                      qso.mode.value,
+                      _statusLabel(context, qso.status),
+                    ].where((value) => value.trim().isNotEmpty).join(' · '),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          QsoReviewScreen(draft: qso, recordInSession: true),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -3653,10 +3938,16 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
 }
 
 class QsoReviewScreen extends ConsumerStatefulWidget {
-  const QsoReviewScreen({super.key, required this.draft, this.importJobId});
+  const QsoReviewScreen({
+    super.key,
+    required this.draft,
+    this.importJobId,
+    this.recordInSession = false,
+  });
 
   final QsoDraft draft;
   final String? importJobId;
+  final bool recordInSession;
 
   @override
   ConsumerState<QsoReviewScreen> createState() => _QsoReviewScreenState();
@@ -3664,6 +3955,9 @@ class QsoReviewScreen extends ConsumerStatefulWidget {
 
 class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late LogStatus status = widget.draft.status;
+  late QsoDraft _baseDraft;
+  final Set<QsoFieldKey> _editedFields = {};
+  final Set<QsoFieldKey> _reviewedFields = {};
   late final TextEditingController _callsignController;
   late final TextEditingController _frequencyController;
   late final TextEditingController _sentRstController;
@@ -3687,11 +3981,14 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   String? _audioPlaybackError;
   bool _retrying = false;
   bool _qrzUploading = false;
+  late final Future<void> Function() _stopAudioPlayback;
 
   @override
   void initState() {
     super.initState();
+    _stopAudioPlayback = ref.read(audioPlaybackServiceProvider).stop;
     final draft = widget.draft;
+    _baseDraft = draft;
     _callsignController = TextEditingController(text: draft.callsign.value);
     _frequencyController = TextEditingController(text: draft.frequency.value);
     _sentRstController = TextEditingController(text: draft.sentRst.value);
@@ -3726,14 +4023,19 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _antennaController.dispose();
     _powerController.dispose();
     _notesController.dispose();
-    unawaited(ref.read(audioPlaybackServiceProvider).stop());
+    unawaited(_stopAudioPlayback());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final qsoId = widget.draft.id;
+    final qsoId = _baseDraft.id;
+    final uploadHasUnreviewedFields = _buildDraft().hasUnreviewedFields;
+    final uploadHasEligibleStatus =
+        status == LogStatus.confirmed || status == LogStatus.exported;
+    final bandOrFrequencyMissing =
+        _band == null && _frequencyController.text.trim().isEmpty;
     final qrzUploadState = qsoId == null
         ? null
         : ref.watch(qrzUploadProvider(qsoId));
@@ -3803,10 +4105,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                         ),
                       ],
                     ),
-                    if (widget.draft.errorMessage != null) ...[
+                    if (_baseDraft.errorMessage != null) ...[
                       const SizedBox(height: 8),
                       Text(
-                        _errorLabel(context, widget.draft.errorMessage!),
+                        _errorLabel(context, _baseDraft.errorMessage!),
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onErrorContainer,
                         ),
@@ -3830,11 +4132,11 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
             ),
           ],
           if (status != LogStatus.failed &&
-              widget.draft.errorMessage != null) ...[
+              _baseDraft.errorMessage != null) ...[
             const SizedBox(height: 12),
             _PlaceholderCard(
               title: l10n.needsReview,
-              text: _errorLabel(context, widget.draft.errorMessage!),
+              text: _errorLabel(context, _baseDraft.errorMessage!),
               icon: Icons.info_outline,
             ),
           ],
@@ -3858,17 +4160,18 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                         !_qrzUploading &&
                         entry?.status != LogbookUploadStatus.succeeded &&
                         entry?.status != LogbookUploadStatus.stale &&
-                        (status == LogStatus.confirmed ||
-                            status == LogStatus.exported),
+                        uploadHasEligibleStatus &&
+                        !uploadHasUnreviewedFields,
                     disabledReason:
                         entry?.status == LogbookUploadStatus.succeeded
                         ? l10n.uploadSucceeded
                         : entry?.status == LogbookUploadStatus.stale
                         ? l10n.logbookUploadStale
-                        : (status == LogStatus.confirmed ||
-                              status == LogStatus.exported)
-                        ? null
-                        : l10n.confirmBeforeUpload,
+                        : !uploadHasEligibleStatus
+                        ? l10n.confirmBeforeUpload
+                        : uploadHasUnreviewedFields
+                        ? l10n.unreviewedFieldsRemain
+                        : null,
                     onUpload: _uploadToQrz,
                   ),
                   error: (error, stackTrace) => _UpdateStatusRow(
@@ -3890,43 +4193,59 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 label: l10n.callsign,
                 controller: _callsignController,
                 requiredField: true,
+                needsReview: _needsStringReview(
+                  QsoFieldKey.callsign,
+                  _baseDraft.callsign,
+                  requiredMissing: _callsignController.text.trim().isEmpty,
+                ),
+                sourceText: _baseDraft.callsign.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.callsign),
+                onChanged: (_) => _markFieldEdited(QsoFieldKey.callsign),
               ),
-              GestureDetector(
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: _dateTime ?? DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (date == null || !mounted) return;
-                  if (!context.mounted) return;
-                  final time = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(
-                      _dateTime ?? DateTime.now(),
+              _FieldReviewFrame(
+                needsReview: _needsDateTimeReview(
+                  requiredMissing: _dateTime == null,
+                ),
+                sourceText: _baseDraft.dateTime.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.dateTime),
+                child: GestureDetector(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _dateTime ?? DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (date == null || !mounted) return;
+                    if (!context.mounted) return;
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay.fromDateTime(
+                        _dateTime ?? DateTime.now(),
+                      ),
+                    );
+                    if (!mounted) return;
+                    setState(() {
+                      _editedFields.add(QsoFieldKey.dateTime);
+                      _dateTime = time == null
+                          ? date
+                          : DateTime(
+                              date.year,
+                              date.month,
+                              date.day,
+                              time.hour,
+                              time.minute,
+                            );
+                    });
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: l10n.dateTime,
+                      suffixIcon: const Icon(Icons.event, size: 18),
                     ),
-                  );
-                  if (!mounted) return;
-                  setState(() {
-                    _dateTime = time == null
-                        ? date
-                        : DateTime(
-                            date.year,
-                            date.month,
-                            date.day,
-                            time.hour,
-                            time.minute,
-                          );
-                  });
-                },
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: l10n.dateTime,
-                    suffixIcon: const Icon(Icons.event, size: 18),
-                  ),
-                  child: Text(
-                    _dateTime == null ? '—' : _formatDateTime(_dateTime!),
+                    child: Text(
+                      _dateTime == null ? '—' : _formatDateTime(_dateTime!),
+                    ),
                   ),
                 ),
               ),
@@ -3938,31 +4257,62 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 ),
               ),
               _TwoColumnFields(
-                left: _BandDropdown(
-                  value: _band,
-                  helperText: _bandSuggested ? l10n.suggestedBand : null,
-                  onChanged: (value) => setState(() {
-                    _band = value;
-                    _bandSuggested = false;
-                  }),
+                left: _FieldReviewFrame(
+                  needsReview: _needsStringReview(
+                    QsoFieldKey.band,
+                    _baseDraft.band,
+                    requiredMissing: bandOrFrequencyMissing,
+                  ),
+                  sourceText: _baseDraft.band.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.band),
+                  child: _BandDropdown(
+                    value: _band,
+                    helperText: _bandSuggested ? l10n.suggestedBand : null,
+                    onChanged: (value) => setState(() {
+                      _editedFields.add(QsoFieldKey.band);
+                      _band = value;
+                      _bandSuggested = false;
+                    }),
+                  ),
                 ),
-                right: TextFormField(
-                  controller: _frequencyController,
-                  decoration: InputDecoration(
-                    labelText: l10n.frequency,
-                    errorText: _frequencyError,
-                    suffixText: 'MHz',
+                right: _FieldReviewFrame(
+                  needsReview: _needsStringReview(
+                    QsoFieldKey.frequency,
+                    _baseDraft.frequency,
+                    requiredMissing: bandOrFrequencyMissing,
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  sourceText: _baseDraft.frequency.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.frequency),
+                  child: TextFormField(
+                    controller: _frequencyController,
+                    decoration: InputDecoration(
+                      labelText: l10n.frequency,
+                      errorText: _frequencyError,
+                      suffixText: 'MHz',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) => _handleFrequencyChanged(value, l10n),
                   ),
-                  onChanged: (value) => _handleFrequencyChanged(value, l10n),
                 ),
               ),
               const SizedBox(height: 12),
-              _ModeDropdown(
-                value: _mode,
-                onChanged: (value) => setState(() => _mode = value),
+              _FieldReviewFrame(
+                needsReview: _needsStringReview(
+                  QsoFieldKey.mode,
+                  _baseDraft.mode,
+                  requiredMissing: _mode == null,
+                ),
+                sourceText: _baseDraft.mode.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.mode),
+                child: _ModeDropdown(
+                  value: _mode,
+                  onChanged: (value) => setState(() {
+                    _editedFields.add(QsoFieldKey.mode);
+                    _mode = value;
+                  }),
+                ),
               ),
               const SizedBox(height: 12),
               _TwoColumnFields(
@@ -3970,11 +4320,27 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   label: l10n.sentRst,
                   controller: _sentRstController,
                   requiredField: true,
+                  needsReview: _needsStringReview(
+                    QsoFieldKey.sentRst,
+                    _baseDraft.sentRst,
+                    requiredMissing: _sentRstController.text.trim().isEmpty,
+                  ),
+                  sourceText: _baseDraft.sentRst.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.sentRst),
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.sentRst),
                 ),
                 right: _ReviewField(
                   label: l10n.receivedRst,
                   controller: _receivedRstController,
                   requiredField: true,
+                  needsReview: _needsStringReview(
+                    QsoFieldKey.receivedRst,
+                    _baseDraft.receivedRst,
+                    requiredMissing: _receivedRstController.text.trim().isEmpty,
+                  ),
+                  sourceText: _baseDraft.receivedRst.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.receivedRst),
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.receivedRst),
                 ),
               ),
             ],
@@ -3987,10 +4353,22 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 left: _ReviewField(
                   label: l10n.name,
                   controller: _nameController,
+                  needsReview:
+                      _baseDraft.name != null &&
+                      _needsStringReview(QsoFieldKey.name, _baseDraft.name!),
+                  sourceText: _baseDraft.name?.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.name),
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.name),
                 ),
                 right: _ReviewField(
                   label: l10n.qth,
                   controller: _qthController,
+                  needsReview:
+                      _baseDraft.qth != null &&
+                      _needsStringReview(QsoFieldKey.qth, _baseDraft.qth!),
+                  sourceText: _baseDraft.qth?.sourceText,
+                  onReviewed: () => _markFieldReviewed(QsoFieldKey.qth),
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.qth),
                 ),
               ),
             ],
@@ -3999,12 +4377,27 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
           _CardSection(
             title: l10n.stationInfo,
             children: [
+              _ReviewField(
+                label: l10n.rig,
+                controller: _rigController,
+                needsReview:
+                    _baseDraft.rig != null &&
+                    _needsStringReview(QsoFieldKey.rig, _baseDraft.rig!),
+                sourceText: _baseDraft.rig?.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.rig),
+                onChanged: (_) => _markFieldEdited(QsoFieldKey.rig),
+              ),
               _EquipmentSelector(
                 selectedEquipment: _selectedEquipment,
                 onSelected: (equipment) {
                   setState(() {
                     _selectedEquipment = equipment;
                     if (equipment != null) {
+                      _editedFields.addAll(const {
+                        QsoFieldKey.rig,
+                        QsoFieldKey.antenna,
+                        QsoFieldKey.power,
+                      });
                       _rigController.text = equipment.name;
                       _antennaController.text = equipment.antenna;
                       if (equipment.powerOptions.isNotEmpty) {
@@ -4015,10 +4408,31 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 },
               ),
               const SizedBox(height: 12),
-              _AntennaDropdown(controller: _antennaController),
-              _PowerDropdown(
-                controller: _powerController,
-                powerOptions: _selectedEquipment?.powerOptions ?? const [],
+              _FieldReviewFrame(
+                needsReview:
+                    _baseDraft.antenna != null &&
+                    _needsStringReview(
+                      QsoFieldKey.antenna,
+                      _baseDraft.antenna!,
+                    ),
+                sourceText: _baseDraft.antenna?.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.antenna),
+                child: _AntennaDropdown(
+                  controller: _antennaController,
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.antenna),
+                ),
+              ),
+              _FieldReviewFrame(
+                needsReview:
+                    _baseDraft.power != null &&
+                    _needsStringReview(QsoFieldKey.power, _baseDraft.power!),
+                sourceText: _baseDraft.power?.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.power),
+                child: _PowerDropdown(
+                  controller: _powerController,
+                  powerOptions: _selectedEquipment?.powerOptions ?? const [],
+                  onChanged: (_) => _markFieldEdited(QsoFieldKey.power),
+                ),
               ),
             ],
           ),
@@ -4030,6 +4444,12 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 label: l10n.notes,
                 controller: _notesController,
                 maxLines: 3,
+                needsReview:
+                    _baseDraft.notes != null &&
+                    _needsStringReview(QsoFieldKey.notes, _baseDraft.notes!),
+                sourceText: _baseDraft.notes?.sourceText,
+                onReviewed: () => _markFieldReviewed(QsoFieldKey.notes),
+                onChanged: (_) => _markFieldEdited(QsoFieldKey.notes),
               ),
               const SizedBox(height: 12),
               _RetainedAudioCard(
@@ -4079,7 +4499,22 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 );
                 return;
               }
+              if ((status == LogStatus.confirmed ||
+                      status == LogStatus.exported) &&
+                  updated.hasUnreviewedFields) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(l10n.unreviewedFieldsRemain)),
+                );
+                return;
+              }
               final id = await ref.read(qsoLogProvider.notifier).save(updated);
+              if (widget.recordInSession) {
+                final saved = await ref.read(qsoRepositoryProvider).findQso(id);
+                if (saved == null) {
+                  throw StateError('saved_qso_missing');
+                }
+                ref.read(qsoSessionProvider.notifier).record(saved);
+              }
               final importJobId = widget.importJobId;
               if (importJobId != null) {
                 await ref
@@ -4102,8 +4537,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     final parsed = double.tryParse(value.trim());
     final suggestedBand = parsed == null ? null : _suggestBand(parsed);
     setState(() {
+      _editedFields.add(QsoFieldKey.frequency);
       _frequencyError = _frequencyErrorText(value, l10n);
       if (suggestedBand != null && _band == null) {
+        _editedFields.add(QsoFieldKey.band);
         _band = suggestedBand;
         _bandSuggested = true;
       }
@@ -4129,32 +4566,151 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   }
 
   QsoDraft _buildDraft() {
-    final draft = widget.draft;
+    final draft = _baseDraft;
     return QsoDraft(
       id: draft.id,
-      callsign: _editedField(_callsignController.text),
-      dateTime: QsoField(value: _dateTime, userEdited: true),
-      band: _band == null
-          ? const QsoField(value: '')
-          : QsoField(value: _band!, userEdited: true),
-      frequency: _editedField(_frequencyController.text),
-      mode: _mode == null
-          ? const QsoField(value: '')
-          : QsoField(value: _mode!, userEdited: true),
-      sentRst: _editedField(_sentRstController.text),
-      receivedRst: _editedField(_receivedRstController.text),
+      callsign: _buildTextField(
+        draft.callsign,
+        _callsignController.text,
+        QsoFieldKey.callsign,
+      ),
+      dateTime: _buildDateTimeField(draft.dateTime),
+      band: _buildTextField(draft.band, _band ?? '', QsoFieldKey.band),
+      frequency: _buildTextField(
+        draft.frequency,
+        _frequencyController.text,
+        QsoFieldKey.frequency,
+      ),
+      mode: _buildTextField(draft.mode, _mode ?? '', QsoFieldKey.mode),
+      sentRst: _buildTextField(
+        draft.sentRst,
+        _sentRstController.text,
+        QsoFieldKey.sentRst,
+      ),
+      receivedRst: _buildTextField(
+        draft.receivedRst,
+        _receivedRstController.text,
+        QsoFieldKey.receivedRst,
+      ),
       status: status == LogStatus.exported ? LogStatus.confirmed : status,
-      name: _optionalEditedField(_nameController.text),
-      qth: _optionalEditedField(_qthController.text),
-      notes: _optionalEditedField(_notesController.text),
-      rig: _optionalEditedField(_rigController.text),
-      antenna: _optionalEditedField(_antennaController.text),
-      power: _optionalEditedField(_powerController.text),
+      name: _buildOptionalField(
+        draft.name,
+        _nameController.text,
+        QsoFieldKey.name,
+      ),
+      qth: _buildOptionalField(draft.qth, _qthController.text, QsoFieldKey.qth),
+      notes: _buildOptionalField(
+        draft.notes,
+        _notesController.text,
+        QsoFieldKey.notes,
+      ),
+      rig: _buildOptionalField(draft.rig, _rigController.text, QsoFieldKey.rig),
+      antenna: _buildOptionalField(
+        draft.antenna,
+        _antennaController.text,
+        QsoFieldKey.antenna,
+      ),
+      power: _buildOptionalField(
+        draft.power,
+        _powerController.text,
+        QsoFieldKey.power,
+      ),
       audioPath: _audioPath,
       originalAudioDeleted: _originalAudioDeleted,
       rawTranscript: _rawTranscript,
+      errorMessage: draft.errorMessage,
       updatedAt: draft.updatedAt,
     );
+  }
+
+  QsoField<String> _buildTextField(
+    QsoField<String> original,
+    String value,
+    QsoFieldKey key,
+  ) {
+    if (_editedFields.contains(key)) {
+      return original.copyWith(
+        value: value.trim(),
+        userEdited: true,
+        reviewed: true,
+      );
+    }
+    if (_reviewedFields.contains(key)) {
+      return original.copyWith(reviewed: true);
+    }
+    return original;
+  }
+
+  QsoField<DateTime?> _buildDateTimeField(QsoField<DateTime?> original) {
+    if (_editedFields.contains(QsoFieldKey.dateTime)) {
+      return original.copyWith(
+        value: _dateTime,
+        userEdited: true,
+        reviewed: true,
+      );
+    }
+    if (_reviewedFields.contains(QsoFieldKey.dateTime)) {
+      return original.copyWith(reviewed: true);
+    }
+    return original;
+  }
+
+  QsoField<String>? _buildOptionalField(
+    QsoField<String>? original,
+    String value,
+    QsoFieldKey key,
+  ) {
+    if (_editedFields.contains(key)) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) {
+        return null;
+      }
+      return (original ?? const QsoField(value: '')).copyWith(
+        value: trimmed,
+        userEdited: true,
+        reviewed: true,
+      );
+    }
+    if (_reviewedFields.contains(key) && original != null) {
+      return original.copyWith(reviewed: true);
+    }
+    return original;
+  }
+
+  void _markFieldEdited(QsoFieldKey key) {
+    if (_editedFields.add(key)) {
+      setState(() {});
+    }
+  }
+
+  void _markFieldReviewed(QsoFieldKey key) {
+    setState(() => _reviewedFields.add(key));
+  }
+
+  bool _needsStringReview(
+    QsoFieldKey key,
+    QsoField<String> field, {
+    bool requiredMissing = false,
+  }) {
+    if (_editedFields.contains(key) ||
+        _reviewedFields.contains(key) ||
+        field.userEdited ||
+        field.reviewed) {
+      return false;
+    }
+    return (field.value.trim().isNotEmpty && field.confidence < 0.75) ||
+        requiredMissing;
+  }
+
+  bool _needsDateTimeReview({required bool requiredMissing}) {
+    final field = _baseDraft.dateTime;
+    if (_editedFields.contains(QsoFieldKey.dateTime) ||
+        _reviewedFields.contains(QsoFieldKey.dateTime) ||
+        field.userEdited ||
+        field.reviewed) {
+      return false;
+    }
+    return (field.value != null && field.confidence < 0.75) || requiredMissing;
   }
 
   Future<void> _retryFinishQso() async {
@@ -4170,6 +4726,9 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
           );
       if (!mounted) return;
       setState(() {
+        _baseDraft = draft;
+        _editedFields.clear();
+        _reviewedFields.clear();
         status = draft.status;
         _retrying = false;
         // 用重试结果更新字段
@@ -4221,6 +4780,12 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.requiredFieldsMissing)));
+      return;
+    }
+    if (updated.hasUnreviewedFields) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.unreviewedFieldsRemain)));
       return;
     }
 
@@ -4510,18 +5075,6 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
         ),
       ),
     );
-  }
-
-  QsoField<String> _editedField(String value) {
-    return QsoField(value: value.trim(), userEdited: true);
-  }
-
-  QsoField<String>? _optionalEditedField(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) {
-      return null;
-    }
-    return QsoField(value: trimmed, userEdited: true);
   }
 }
 
@@ -5796,9 +6349,10 @@ class _EquipmentSelector extends ConsumerWidget {
 
 // 天线下拉：选项来自所有已配置设备的天线（去重）；当前值不在选项中则自动并入。
 class _AntennaDropdown extends ConsumerWidget {
-  const _AntennaDropdown({required this.controller});
+  const _AntennaDropdown({required this.controller, this.onChanged});
 
   final TextEditingController controller;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5811,62 +6365,61 @@ class _AntennaDropdown extends ConsumerWidget {
         .where((a) => a.isNotEmpty)
         .toSet()
         .toList();
-    final current = controller.text.trim();
-    final options = <String>[
-      ...antennas,
-      if (current.isNotEmpty && !antennas.contains(current)) current,
-    ];
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: current.isEmpty ? null : current,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: l10n.antenna,
-          prefixIcon: const Icon(Icons.cell_tower),
-        ),
-        hint: Text(l10n.antenna),
-        items: [
-          for (final a in options) DropdownMenuItem(value: a, child: Text(a)),
-        ],
-        onChanged: (value) {
-          if (value != null) controller.text = value;
-        },
+    return TextFormField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: l10n.antenna,
+        prefixIcon: const Icon(Icons.cell_tower),
+        suffixIcon: antennas.isEmpty
+            ? null
+            : PopupMenuButton<String>(
+                onSelected: (value) {
+                  controller.text = value;
+                  onChanged?.call(value);
+                },
+                itemBuilder: (_) => [
+                  for (final antenna in antennas)
+                    PopupMenuItem(value: antenna, child: Text(antenna)),
+                ],
+              ),
       ),
     );
   }
 }
 
 class _PowerDropdown extends StatelessWidget {
-  const _PowerDropdown({required this.controller, required this.powerOptions});
+  const _PowerDropdown({
+    required this.controller,
+    required this.powerOptions,
+    this.onChanged,
+  });
 
   final TextEditingController controller;
   final List<String> powerOptions;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    if (powerOptions.isEmpty) {
-      return _ReviewField(label: l10n.power, controller: controller);
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        initialValue: controller.text.isEmpty ? null : controller.text,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: l10n.power,
-          prefixIcon: const Icon(Icons.electrical_services),
-        ),
-        items: [
-          for (final option in powerOptions)
-            DropdownMenuItem(value: option, child: Text(option)),
-        ],
-        onChanged: (value) {
-          if (value != null) {
-            controller.text = value;
-          }
-        },
+    return TextFormField(
+      controller: controller,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: l10n.power,
+        prefixIcon: const Icon(Icons.electrical_services),
+        suffixIcon: powerOptions.isEmpty
+            ? null
+            : PopupMenuButton<String>(
+                onSelected: (value) {
+                  controller.text = value;
+                  onChanged?.call(value);
+                },
+                itemBuilder: (_) => [
+                  for (final option in powerOptions)
+                    PopupMenuItem(value: option, child: Text(option)),
+                ],
+              ),
       ),
     );
   }
@@ -5878,23 +6431,95 @@ class _ReviewField extends StatelessWidget {
     required this.controller,
     this.requiredField = false,
     this.maxLines = 1,
+    this.needsReview = false,
+    this.sourceText,
+    this.onReviewed,
+    this.onChanged,
   });
 
   final String label;
   final TextEditingController controller;
   final bool requiredField;
   final int maxLines;
+  final bool needsReview;
+  final String? sourceText;
+  final VoidCallback? onReviewed;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+    return _FieldReviewFrame(
+      needsReview: needsReview,
+      sourceText: sourceText,
+      onReviewed: onReviewed,
       child: TextFormField(
         controller: controller,
         maxLines: maxLines,
+        onChanged: onChanged,
         decoration: InputDecoration(
           labelText: requiredField ? '$label *' : label,
         ),
+      ),
+    );
+  }
+}
+
+class _FieldReviewFrame extends StatelessWidget {
+  const _FieldReviewFrame({
+    required this.child,
+    this.needsReview = false,
+    this.sourceText,
+    this.onReviewed,
+  });
+
+  final Widget child;
+  final bool needsReview;
+  final String? sourceText;
+  final VoidCallback? onReviewed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final source = sourceText?.trim();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: needsReview ? const EdgeInsets.all(12) : EdgeInsets.zero,
+      decoration: needsReview
+          ? BoxDecoration(
+              color: colors.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: colors.error),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          child,
+          if (needsReview) ...[
+            const SizedBox(height: 8),
+            Text(
+              context.l10n.reviewRequired,
+              style: Theme.of(
+                context,
+              ).textTheme.labelMedium?.copyWith(color: colors.error),
+            ),
+            if (source?.isNotEmpty == true) ...[
+              const SizedBox(height: 4),
+              Text(
+                '${context.l10n.sourceExcerpt}: $source',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onReviewed,
+                icon: const Icon(Icons.check_circle_outline),
+                label: Text(context.l10n.confirmFieldCorrect),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

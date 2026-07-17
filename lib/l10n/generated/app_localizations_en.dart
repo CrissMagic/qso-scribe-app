@@ -152,6 +152,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get lowConfidence => 'Low confidence';
 
   @override
+  String get reviewRequired => 'Review required';
+
+  @override
+  String get confirmFieldCorrect => 'Confirm correct';
+
+  @override
+  String get sourceExcerpt => 'Source excerpt';
+
+  @override
+  String get unreviewedFieldsRemain =>
+      'Unreviewed fields remain; this QSO cannot be saved as confirmed';
+
+  @override
+  String get currentStructuredDraft => 'Current structured draft';
+
+  @override
+  String get structuringInProgress => 'Updating structured fields…';
+
+  @override
+  String get editField => 'Edit field';
+
+  @override
+  String get noSessionQsos => 'No QSO has been saved in this session';
+
+  @override
   String get aiFilled => 'AI filled';
 
   @override

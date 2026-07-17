@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/app_models.dart';
@@ -89,6 +91,11 @@ class QsoRepository {
         !qso.hasRequiredFields) {
       throw StateError('required_qso_fields_missing');
     }
+    if ((qso.status == LogStatus.confirmed ||
+            qso.status == LogStatus.exported) &&
+        qso.hasUnreviewedFields) {
+      throw StateError('unreviewed_qso_fields');
+    }
 
     final db = await _database.instance;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -134,19 +141,6 @@ class QsoRepository {
       }
     });
     return id;
-  }
-
-  Future<void> updateStatus(String id, LogStatus status) async {
-    final db = await _database.instance;
-    await db.update(
-      'qso_logs',
-      {
-        'status': encodeLogStatus(status),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
   }
 
   Future<void> clearAudioPath(String id) async {
@@ -265,6 +259,21 @@ class QsoRepository {
       'audio_path': qso.audioPath,
       'original_audio_deleted': encodeBool(qso.originalAudioDeleted),
       'raw_transcript': qso.rawTranscript,
+      'field_metadata': jsonEncode({
+        'callsign': _encodeFieldMetadata(qso.callsign),
+        'dateTime': _encodeFieldMetadata(qso.dateTime),
+        'band': _encodeFieldMetadata(qso.band),
+        'frequency': _encodeFieldMetadata(qso.frequency),
+        'mode': _encodeFieldMetadata(qso.mode),
+        'sentRst': _encodeFieldMetadata(qso.sentRst),
+        'receivedRst': _encodeFieldMetadata(qso.receivedRst),
+        if (qso.name != null) 'name': _encodeFieldMetadata(qso.name!),
+        if (qso.qth != null) 'qth': _encodeFieldMetadata(qso.qth!),
+        if (qso.notes != null) 'notes': _encodeFieldMetadata(qso.notes!),
+        if (qso.rig != null) 'rig': _encodeFieldMetadata(qso.rig!),
+        if (qso.antenna != null) 'antenna': _encodeFieldMetadata(qso.antenna!),
+        if (qso.power != null) 'power': _encodeFieldMetadata(qso.power!),
+      }),
       'created_at': createdAt ?? timestamp,
       'updated_at': timestamp,
     };
@@ -272,34 +281,87 @@ class QsoRepository {
 }
 
 QsoDraft decodeQsoRow(Map<String, Object?> row) {
+  final status = decodeLogStatus(row['status'] as String?);
+  final metadata = _decodeFieldMetadata(row['field_metadata'] as String?);
+  final legacyReviewed =
+      metadata == null &&
+      (status == LogStatus.confirmed || status == LogStatus.exported);
   final dateTimeText = row['qso_datetime'] as String?;
   final dateTime = dateTimeText == null
       ? null
       : DateTime.parse(dateTimeText).toLocal();
   return QsoDraft(
     id: row['id'] as String,
-    status: decodeLogStatus(row['status'] as String?),
-    callsign: QsoField(
+    status: status,
+    callsign: _decodeQsoField(
       value: row['callsign'] as String,
-      confidence: (row['callsign_confidence'] as num).toDouble(),
-      userEdited: decodeBool(row['callsign_user_edited']),
-      sourceText: row['callsign_source_text'] as String?,
+      metadata: _metadataFor(metadata, 'callsign'),
+      fallbackConfidence: (row['callsign_confidence'] as num).toDouble(),
+      fallbackUserEdited: decodeBool(row['callsign_user_edited']),
+      fallbackReviewed: legacyReviewed,
+      fallbackSourceText: row['callsign_source_text'] as String?,
     ),
-    dateTime: QsoField(value: dateTime),
-    band: QsoField(value: row['band'] as String),
-    frequency: QsoField(value: row['frequency'] as String),
-    mode: QsoField(value: row['mode'] as String),
-    sentRst: QsoField(value: row['sent_rst'] as String),
-    receivedRst: QsoField(value: row['received_rst'] as String),
-    name: _optionalQsoField(row['name'] as String?),
+    dateTime: _decodeQsoField(
+      value: dateTime,
+      metadata: _metadataFor(metadata, 'dateTime'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    band: _decodeQsoField(
+      value: row['band'] as String,
+      metadata: _metadataFor(metadata, 'band'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    frequency: _decodeQsoField(
+      value: row['frequency'] as String,
+      metadata: _metadataFor(metadata, 'frequency'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    mode: _decodeQsoField(
+      value: row['mode'] as String,
+      metadata: _metadataFor(metadata, 'mode'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    sentRst: _decodeQsoField(
+      value: row['sent_rst'] as String,
+      metadata: _metadataFor(metadata, 'sentRst'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    receivedRst: _decodeQsoField(
+      value: row['received_rst'] as String,
+      metadata: _metadataFor(metadata, 'receivedRst'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    name: _optionalQsoField(
+      row['name'] as String?,
+      metadata: _metadataFor(metadata, 'name'),
+      fallbackReviewed: legacyReviewed,
+    ),
     qth: _optionalQsoField(
       row['qth'] as String?,
-      confidence: (row['qth_confidence'] as num?)?.toDouble(),
+      metadata: _metadataFor(metadata, 'qth'),
+      fallbackConfidence: (row['qth_confidence'] as num?)?.toDouble(),
+      fallbackReviewed: legacyReviewed,
     ),
-    notes: _optionalQsoField(row['notes'] as String?),
-    rig: _optionalQsoField(row['rig'] as String?),
-    antenna: _optionalQsoField(row['antenna'] as String?),
-    power: _optionalQsoField(row['power'] as String?),
+    notes: _optionalQsoField(
+      row['notes'] as String?,
+      metadata: _metadataFor(metadata, 'notes'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    rig: _optionalQsoField(
+      row['rig'] as String?,
+      metadata: _metadataFor(metadata, 'rig'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    antenna: _optionalQsoField(
+      row['antenna'] as String?,
+      metadata: _metadataFor(metadata, 'antenna'),
+      fallbackReviewed: legacyReviewed,
+    ),
+    power: _optionalQsoField(
+      row['power'] as String?,
+      metadata: _metadataFor(metadata, 'power'),
+      fallbackReviewed: legacyReviewed,
+    ),
     audioPath: row['audio_path'] as String?,
     originalAudioDeleted: decodeBool(row['original_audio_deleted']),
     rawTranscript: row['raw_transcript'] as String?,
@@ -307,9 +369,72 @@ QsoDraft decodeQsoRow(Map<String, Object?> row) {
   );
 }
 
-QsoField<String>? _optionalQsoField(String? value, {double? confidence}) {
+Map<String, Object?> _encodeFieldMetadata<T>(QsoField<T> field) => {
+  'confidence': field.confidence,
+  'userEdited': field.userEdited,
+  'reviewed': field.reviewed,
+  'sourceText': field.sourceText,
+};
+
+Map<String, Object?>? _decodeFieldMetadata(String? value) {
+  if (value == null) {
+    return null;
+  }
+  final decoded = jsonDecode(value);
+  if (decoded is! Map) {
+    throw const FormatException('invalid_qso_field_metadata');
+  }
+  return Map<String, Object?>.from(decoded);
+}
+
+Map<String, Object?>? _metadataFor(Map<String, Object?>? metadata, String key) {
+  final value = metadata?[key];
+  if (value == null) {
+    return null;
+  }
+  if (value is! Map) {
+    throw const FormatException('invalid_qso_field_metadata');
+  }
+  return Map<String, Object?>.from(value);
+}
+
+QsoField<T> _decodeQsoField<T>({
+  required T value,
+  Map<String, Object?>? metadata,
+  double fallbackConfidence = 1,
+  bool fallbackUserEdited = false,
+  bool fallbackReviewed = false,
+  String? fallbackSourceText,
+}) {
+  return QsoField<T>(
+    value: value,
+    confidence:
+        (metadata?['confidence'] as num?)?.toDouble() ?? fallbackConfidence,
+    userEdited: metadata == null
+        ? fallbackUserEdited
+        : decodeBool(metadata['userEdited']),
+    reviewed: metadata == null
+        ? fallbackReviewed
+        : decodeBool(metadata['reviewed']),
+    sourceText: metadata == null
+        ? fallbackSourceText
+        : metadata['sourceText'] as String?,
+  );
+}
+
+QsoField<String>? _optionalQsoField(
+  String? value, {
+  Map<String, Object?>? metadata,
+  double? fallbackConfidence,
+  bool fallbackReviewed = false,
+}) {
   if (value == null || value.isEmpty) {
     return null;
   }
-  return QsoField(value: value, confidence: confidence ?? 1);
+  return _decodeQsoField(
+    value: value,
+    metadata: metadata,
+    fallbackConfidence: fallbackConfidence ?? 1,
+    fallbackReviewed: fallbackReviewed,
+  );
 }

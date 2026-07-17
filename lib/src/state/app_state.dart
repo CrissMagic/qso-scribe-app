@@ -627,13 +627,76 @@ final recordingSessionProvider =
       RecordingSessionNotifier.new,
     );
 
+class QsoSessionNotifier extends Notifier<List<QsoDraft>> {
+  @override
+  List<QsoDraft> build() => const [];
+
+  void record(QsoDraft qso) {
+    final id = qso.id;
+    if (id == null || id.trim().isEmpty) {
+      throw ArgumentError.value(id, 'qso.id', 'session_qso_id_required');
+    }
+    final existingIndex = state.indexWhere((item) => item.id == id);
+    if (existingIndex < 0) {
+      state = [...state, qso];
+      return;
+    }
+    state = [
+      for (var index = 0; index < state.length; index += 1)
+        if (index == existingIndex) qso else state[index],
+    ];
+  }
+
+  void updateIfPresent(QsoDraft qso) {
+    final id = qso.id;
+    if (id == null || id.trim().isEmpty) {
+      throw ArgumentError.value(id, 'qso.id', 'session_qso_id_required');
+    }
+    final existingIndex = state.indexWhere((item) => item.id == id);
+    if (existingIndex < 0) {
+      return;
+    }
+    state = [
+      for (var index = 0; index < state.length; index += 1)
+        if (index == existingIndex) qso else state[index],
+    ];
+  }
+
+  QsoDraft? latestInheritable() {
+    for (final qso in state.reversed) {
+      if (qso.status == LogStatus.confirmed ||
+          qso.status == LogStatus.exported) {
+        return qso;
+      }
+    }
+    return null;
+  }
+}
+
+final qsoSessionProvider = NotifierProvider<QsoSessionNotifier, List<QsoDraft>>(
+  QsoSessionNotifier.new,
+);
+
 class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   QsoCaptureNotifier({
     Future<SpeechTranscriptionProvider?> Function()? streamingProviderResolver,
-  }) : _streamingProviderResolver = streamingProviderResolver;
+    Future<QsoDraft> Function(String rawText, DateTime? dateTime)?
+    realtimeDraftFactory,
+    Future<QsoDraft> Function(String audioPath, DateTime? startedAt)?
+    afterQsoDraftFactory,
+    Future<QsoDraft> Function(QsoDraft draft)? recognitionRetentionApplier,
+  }) : _streamingProviderResolver = streamingProviderResolver,
+       _realtimeDraftFactory = realtimeDraftFactory,
+       _afterQsoDraftFactory = afterQsoDraftFactory,
+       _recognitionRetentionApplier = recognitionRetentionApplier;
 
   final Future<SpeechTranscriptionProvider?> Function()?
   _streamingProviderResolver;
+  final Future<QsoDraft> Function(String rawText, DateTime? dateTime)?
+  _realtimeDraftFactory;
+  final Future<QsoDraft> Function(String audioPath, DateTime? startedAt)?
+  _afterQsoDraftFactory;
+  final Future<QsoDraft> Function(QsoDraft draft)? _recognitionRetentionApplier;
 
   @override
   Future<QsoCaptureState> build() async {
@@ -654,9 +717,13 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   int _segmentSeq = 0;
   String? _partial;
   String? _streamingFailure;
+  String? _realtimeStructuringFailure;
+  Future<void>? _realtimeStructuringTask;
+  bool _realtimeStructuringRequested = false;
 
   Future<bool> startRecordingQso({required TranscriptionMode mode}) async {
     await future;
+    await _waitForRealtimeStructuring();
     final currentSession = ref.read(recordingSessionProvider);
     if (currentSession.isRecording || currentSession.isProcessing) {
       return false;
@@ -664,6 +731,8 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     _finalSegments = [];
     _partial = null;
     _streamingFailure = null;
+    _realtimeStructuringFailure = null;
+    _realtimeStructuringRequested = false;
     _segmentAudio.takeBytes();
     _segmentSeq = 0;
     state = AsyncData(QsoCaptureState(currentDraft: _emptyDraft()));
@@ -688,9 +757,14 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     }
 
     final startedAt = DateTime.now();
+    final inherited = ref.read(qsoSessionProvider.notifier).latestInheritable();
     _updateCapture(
-      (current) =>
-          current.copyWith(currentDraft: _emptyDraft(dateTime: startedAt)),
+      (current) => current.copyWith(
+        currentDraft: _emptyDraft(
+          dateTime: startedAt,
+          inheritedFrom: inherited,
+        ),
+      ),
     );
     await recorder.start(mode, startedAt: startedAt);
     if (!ref.read(recordingSessionProvider).isRecording) {
@@ -838,6 +912,107 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       _partial = segment.text;
     }
     _publishTranscriptSegments();
+    if (segment.isFinal && segment.hasText) {
+      unawaited(_requestRealtimeStructuring());
+    }
+  }
+
+  Future<void> _requestRealtimeStructuring() {
+    _realtimeStructuringRequested = true;
+    final running = _realtimeStructuringTask;
+    if (running != null) {
+      return running;
+    }
+
+    late final Future<void> task;
+    task = _drainRealtimeStructuring().whenComplete(() {
+      if (identical(_realtimeStructuringTask, task)) {
+        _realtimeStructuringTask = null;
+      }
+      if (_realtimeStructuringRequested) {
+        unawaited(_requestRealtimeStructuring());
+      }
+    });
+    _realtimeStructuringTask = task;
+    return task;
+  }
+
+  Future<void> _drainRealtimeStructuring() async {
+    _updateCapture((current) => current.copyWith(isStructuring: true));
+    try {
+      while (_realtimeStructuringRequested) {
+        _realtimeStructuringRequested = false;
+        await _structureRealtimeSnapshot();
+      }
+    } finally {
+      _updateCapture((current) => current.copyWith(isStructuring: false));
+    }
+  }
+
+  Future<void> _structureRealtimeSnapshot() async {
+    final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
+    if (rawText.trim().isEmpty) {
+      return;
+    }
+    final current = await future;
+    final dateTime = current.currentDraft.dateTime.value;
+    final factory = _realtimeDraftFactory;
+    QsoDraft patch;
+    try {
+      patch = factory == null
+          ? await ref
+                .read(qsoIntakeServiceProvider)
+                .reviewDraftFromText(rawText, dateTime: dateTime)
+          : await factory(rawText, dateTime);
+    } catch (error) {
+      final message = error.toString();
+      _realtimeStructuringFailure = message;
+      _updateCapture((latest) {
+        final showWarning =
+            ref.read(failureHandlingProvider) == FailureHandling.alert;
+        return latest.copyWith(
+          currentDraft: latest.currentDraft.copyWith(
+            rawTranscript: rawText,
+            status: LogStatus.needsReview,
+            errorMessage: message,
+          ),
+          warningMessage: showWarning ? message : null,
+          clearWarning: !showWarning,
+        );
+      });
+      return;
+    }
+
+    _realtimeStructuringFailure = patch.errorMessage;
+    _updateCapture((latest) {
+      final draft = _mergeRealtimeDraft(
+        latest.currentDraft,
+        patch,
+        rawText: rawText,
+      );
+      final showWarning =
+          patch.errorMessage != null &&
+          ref.read(failureHandlingProvider) == FailureHandling.alert;
+      return latest.copyWith(
+        currentDraft: draft,
+        warningMessage: showWarning ? patch.errorMessage : null,
+        clearWarning: !showWarning,
+      );
+    });
+  }
+
+  Future<void> _waitForRealtimeStructuring() async {
+    while (true) {
+      if (_realtimeStructuringRequested) {
+        await _requestRealtimeStructuring();
+        continue;
+      }
+      final running = _realtimeStructuringTask;
+      if (running == null) {
+        return;
+      }
+      await running;
+    }
   }
 
   void _addUnrecognizedSegment([String? errorMessage]) {
@@ -885,6 +1060,134 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
           _finalSegments[i],
     ];
     _publishTranscriptSegments(updateDraftTranscript: true);
+    unawaited(_requestRealtimeStructuring());
+  }
+
+  void editCurrentDraftField(QsoFieldKey key, String value) {
+    final trimmed = value.trim();
+    _updateCapture((current) {
+      final draft = current.currentDraft;
+      QsoField<String> edited(QsoField<String> field) =>
+          field.copyWith(value: trimmed, userEdited: true, reviewed: true);
+
+      QsoField<String>? editedOptional(QsoField<String>? field) {
+        if (trimmed.isEmpty) {
+          return null;
+        }
+        return (field ?? const QsoField(value: '')).copyWith(
+          value: trimmed,
+          userEdited: true,
+          reviewed: true,
+        );
+      }
+
+      final updated = switch (key) {
+        QsoFieldKey.callsign => draft.copyWith(
+          callsign: edited(draft.callsign),
+        ),
+        QsoFieldKey.band => draft.copyWith(band: edited(draft.band)),
+        QsoFieldKey.frequency => draft.copyWith(
+          frequency: edited(draft.frequency),
+        ),
+        QsoFieldKey.mode => draft.copyWith(mode: edited(draft.mode)),
+        QsoFieldKey.sentRst => draft.copyWith(sentRst: edited(draft.sentRst)),
+        QsoFieldKey.receivedRst => draft.copyWith(
+          receivedRst: edited(draft.receivedRst),
+        ),
+        QsoFieldKey.name => draft.copyWith(
+          name: editedOptional(draft.name),
+          clearName: trimmed.isEmpty,
+        ),
+        QsoFieldKey.qth => draft.copyWith(
+          qth: editedOptional(draft.qth),
+          clearQth: trimmed.isEmpty,
+        ),
+        QsoFieldKey.notes => draft.copyWith(
+          notes: editedOptional(draft.notes),
+          clearNotes: trimmed.isEmpty,
+        ),
+        QsoFieldKey.rig => draft.copyWith(
+          rig: editedOptional(draft.rig),
+          clearRig: trimmed.isEmpty,
+        ),
+        QsoFieldKey.antenna => draft.copyWith(
+          antenna: editedOptional(draft.antenna),
+          clearAntenna: trimmed.isEmpty,
+        ),
+        QsoFieldKey.power => draft.copyWith(
+          power: editedOptional(draft.power),
+          clearPower: trimmed.isEmpty,
+        ),
+        QsoFieldKey.dateTime => throw ArgumentError.value(
+          key,
+          'key',
+          'Use editCurrentDraftDateTime for dateTime',
+        ),
+      };
+      return current.copyWith(currentDraft: updated);
+    });
+  }
+
+  void editCurrentDraftDateTime(DateTime value) {
+    _updateCapture((current) {
+      final draft = current.currentDraft;
+      return current.copyWith(
+        currentDraft: draft.copyWith(
+          dateTime: draft.dateTime.copyWith(
+            value: value,
+            userEdited: true,
+            reviewed: true,
+          ),
+        ),
+      );
+    });
+  }
+
+  void reviewCurrentDraftField(QsoFieldKey key) {
+    _updateCapture((current) {
+      final draft = current.currentDraft;
+      QsoField<T> reviewed<T>(QsoField<T> field) =>
+          field.copyWith(reviewed: true);
+
+      final updated = switch (key) {
+        QsoFieldKey.callsign => draft.copyWith(
+          callsign: reviewed(draft.callsign),
+        ),
+        QsoFieldKey.dateTime => draft.copyWith(
+          dateTime: reviewed(draft.dateTime),
+        ),
+        QsoFieldKey.band => draft.copyWith(band: reviewed(draft.band)),
+        QsoFieldKey.frequency => draft.copyWith(
+          frequency: reviewed(draft.frequency),
+        ),
+        QsoFieldKey.mode => draft.copyWith(mode: reviewed(draft.mode)),
+        QsoFieldKey.sentRst => draft.copyWith(sentRst: reviewed(draft.sentRst)),
+        QsoFieldKey.receivedRst => draft.copyWith(
+          receivedRst: reviewed(draft.receivedRst),
+        ),
+        QsoFieldKey.name =>
+          draft.name == null
+              ? draft
+              : draft.copyWith(name: reviewed(draft.name!)),
+        QsoFieldKey.qth =>
+          draft.qth == null ? draft : draft.copyWith(qth: reviewed(draft.qth!)),
+        QsoFieldKey.notes =>
+          draft.notes == null
+              ? draft
+              : draft.copyWith(notes: reviewed(draft.notes!)),
+        QsoFieldKey.rig =>
+          draft.rig == null ? draft : draft.copyWith(rig: reviewed(draft.rig!)),
+        QsoFieldKey.antenna =>
+          draft.antenna == null
+              ? draft
+              : draft.copyWith(antenna: reviewed(draft.antenna!)),
+        QsoFieldKey.power =>
+          draft.power == null
+              ? draft
+              : draft.copyWith(power: reviewed(draft.power!)),
+      };
+      return current.copyWith(currentDraft: updated);
+    });
   }
 
   void _publishTranscriptSegments({bool updateDraftTranscript = false}) {
@@ -898,7 +1201,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         ),
     ];
     _updateCapture((state) {
-      if (!updateDraftTranscript || !state.pendingStructuring) {
+      if (!updateDraftTranscript) {
         return state.copyWith(transcriptSegments: visibleSegments);
       }
       final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
@@ -924,8 +1227,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     _transcriptSub = null;
   }
 
-  /// 停止流式转写但保留转写文本，等待用户点击 AI 处理再结构化。
-  /// 不清空 [_finalSegments]，设置 pendingStructuring 标志。
+  /// 停止流式转写，等待最后一轮实时结构化完成后返回可复核草稿。
   Future<QsoDraft> stopQsoStreaming({
     required String? audioPath,
     required DateTime? startedAt,
@@ -945,24 +1247,33 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       ];
       _partial = null;
       _publishTranscriptSegments();
+      unawaited(_requestRealtimeStructuring());
     }
     if (_segmentAudio.length > 0) {
       _addUnrecognizedSegment();
     }
     final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
     final hasTranscript = rawText.trim().isNotEmpty;
+    if (hasTranscript) {
+      await _requestRealtimeStructuring();
+      await _waitForRealtimeStructuring();
+    }
     final latest = await future;
     var draft = latest.currentDraft.copyWith(
       audioPath: audioPath,
       rawTranscript: hasTranscript ? rawText : null,
       clearRawTranscript: !hasTranscript,
-      dateTime: QsoField(
+      dateTime: latest.currentDraft.dateTime.copyWith(
         value: startedAt ?? latest.currentDraft.dateTime.value,
       ),
-      status: hasTranscript ? LogStatus.draft : LogStatus.failed,
+      status: hasTranscript ? LogStatus.needsReview : LogStatus.failed,
       errorMessage: hasTranscript
-          ? _streamingFailure
+          ? _streamingFailure ?? _realtimeStructuringFailure
           : _streamingFailure ?? 'no_streaming_transcript',
+      clearErrorMessage:
+          hasTranscript &&
+          _streamingFailure == null &&
+          _realtimeStructuringFailure == null,
     );
     if (!hasTranscript) {
       final showWarning =
@@ -970,68 +1281,21 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       state = AsyncData(
         latest.copyWith(
           currentDraft: draft,
-          pendingStructuring: false,
+          isStructuring: false,
           warningMessage: showWarning ? 'no_streaming_transcript' : null,
           clearWarning: !showWarning,
         ),
       );
       return draft;
     }
-    draft = await ref
-        .read(qsoIntakeServiceProvider)
-        .applyRecognitionRetention(draft);
+    final retentionApplier = _recognitionRetentionApplier;
+    draft = retentionApplier == null
+        ? await ref
+              .read(qsoIntakeServiceProvider)
+              .applyRecognitionRetention(draft)
+        : await retentionApplier(draft);
     state = AsyncData(
-      latest.copyWith(
-        currentDraft: draft,
-        pendingStructuring: rawText.trim().isNotEmpty,
-      ),
-    );
-    return draft;
-  }
-
-  /// 将当前保留的流式转写文本结构化为 QSO 草稿。
-  Future<QsoDraft> structureCapturedTranscript() async {
-    final current = await future;
-    final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
-    _partial = null;
-
-    if (rawText.trim().isEmpty) {
-      final draft = current.currentDraft.copyWith(
-        status: LogStatus.needsReview,
-        rawTranscript: null,
-      );
-      state = AsyncData(
-        current.copyWith(
-          currentDraft: draft,
-          pendingStructuring: false,
-          warningMessage: 'no_streaming_transcript',
-        ),
-      );
-      return draft;
-    }
-
-    final audioPath = current.currentDraft.audioPath;
-    final dateTime = current.currentDraft.dateTime.value;
-    final structuredDraft = await ref
-        .read(qsoIntakeServiceProvider)
-        .reviewDraftFromText(
-          rawText,
-          audioPath: audioPath,
-          dateTime: dateTime,
-          originalAudioDeleted: current.currentDraft.originalAudioDeleted,
-        );
-    final draft = _streamingFailure == null
-        ? structuredDraft
-        : structuredDraft.copyWith(errorMessage: _streamingFailure);
-    _finalSegments = [];
-    _segmentAudio.takeBytes();
-    state = AsyncData(
-      current.copyWith(
-        currentDraft: draft,
-        transcriptSegments: const [],
-        pendingStructuring: false,
-        clearWarning: true,
-      ),
+      latest.copyWith(currentDraft: draft, isStructuring: false),
     );
     return draft;
   }
@@ -1060,9 +1324,26 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
 
     if (mode == TranscriptionMode.afterQso) {
       try {
-        final draft = await ref
-            .read(qsoIntakeServiceProvider)
-            .reviewDraftFromAudio(audioPath: audioPath, startedAt: startedAt);
+        final factory = _afterQsoDraftFactory;
+        final recognized = factory == null
+            ? await ref
+                  .read(qsoIntakeServiceProvider)
+                  .reviewDraftFromAudio(
+                    audioPath: audioPath,
+                    startedAt: startedAt,
+                  )
+            : await factory(audioPath, startedAt);
+        final draft = _mergeStructuredFields(current.currentDraft, recognized)
+            .copyWith(
+              audioPath: recognized.audioPath,
+              clearAudioPath: recognized.audioPath == null,
+              originalAudioDeleted: recognized.originalAudioDeleted,
+              rawTranscript: recognized.rawTranscript,
+              clearRawTranscript: recognized.rawTranscript == null,
+              status: recognized.status,
+              errorMessage: recognized.errorMessage,
+              clearErrorMessage: recognized.errorMessage == null,
+            );
         state = AsyncData(
           QsoCaptureState(
             currentDraft: draft,
@@ -1095,21 +1376,37 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       }
     }
 
-    // 流式模式的收尾已交由 stopQsoStreaming + structureCapturedTranscript 负责；
+    // 流式模式的收尾已交由 stopQsoStreaming 负责；
     // 此处委托以消除重复实现与不可达分支。
     return stopQsoStreaming(audioPath: audioPath, startedAt: startedAt);
   }
 
-  QsoDraft _emptyDraft({DateTime? dateTime}) {
+  QsoDraft _emptyDraft({DateTime? dateTime, QsoDraft? inheritedFrom}) {
+    QsoField<String> inheritedRequired(QsoField<String>? field) {
+      final value = field?.value.trim() ?? '';
+      return QsoField(value: value, confidence: value.isEmpty ? 0.2 : 1);
+    }
+
+    QsoField<String>? inheritedOptional(QsoField<String>? field) {
+      final value = field?.value.trim() ?? '';
+      return value.isEmpty ? null : QsoField(value: value);
+    }
+
     return QsoDraft(
       callsign: const QsoField(value: '', confidence: 0.2),
-      dateTime: QsoField(value: dateTime),
-      band: const QsoField(value: '', confidence: 0.2),
-      frequency: const QsoField(value: '', confidence: 0.2),
-      mode: const QsoField(value: '', confidence: 0.2),
+      dateTime: QsoField(
+        value: dateTime,
+        confidence: dateTime == null ? 0.2 : 1,
+      ),
+      band: inheritedRequired(inheritedFrom?.band),
+      frequency: inheritedRequired(inheritedFrom?.frequency),
+      mode: inheritedRequired(inheritedFrom?.mode),
       sentRst: const QsoField(value: '', confidence: 0.2),
       receivedRst: const QsoField(value: '', confidence: 0.2),
       status: LogStatus.draft,
+      rig: inheritedOptional(inheritedFrom?.rig),
+      antenna: inheritedOptional(inheritedFrom?.antenna),
+      power: inheritedOptional(inheritedFrom?.power),
     );
   }
 }
@@ -1118,6 +1415,55 @@ final qsoCaptureProvider =
     AsyncNotifierProvider<QsoCaptureNotifier, QsoCaptureState>(
       QsoCaptureNotifier.new,
     );
+
+QsoDraft _mergeRealtimeDraft(
+  QsoDraft current,
+  QsoDraft patch, {
+  required String rawText,
+}) {
+  return _mergeStructuredFields(current, patch).copyWith(
+    status: LogStatus.needsReview,
+    rawTranscript: rawText,
+    errorMessage: patch.errorMessage,
+    clearErrorMessage: patch.errorMessage == null,
+  );
+}
+
+QsoDraft _mergeStructuredFields(QsoDraft current, QsoDraft patch) {
+  QsoField<String> mergeRequired(
+    QsoField<String> existing,
+    QsoField<String> incoming,
+  ) => existing.userEdited || existing.reviewed || incoming.value.trim().isEmpty
+      ? existing
+      : incoming;
+
+  QsoField<String>? mergeOptional(
+    QsoField<String>? existing,
+    QsoField<String>? incoming,
+  ) =>
+      existing?.userEdited == true ||
+          existing?.reviewed == true ||
+          incoming == null ||
+          incoming.value.trim().isEmpty
+      ? existing
+      : incoming;
+
+  return current.copyWith(
+    callsign: mergeRequired(current.callsign, patch.callsign),
+    dateTime: current.dateTime,
+    band: mergeRequired(current.band, patch.band),
+    frequency: mergeRequired(current.frequency, patch.frequency),
+    mode: mergeRequired(current.mode, patch.mode),
+    sentRst: mergeRequired(current.sentRst, patch.sentRst),
+    receivedRst: mergeRequired(current.receivedRst, patch.receivedRst),
+    name: mergeOptional(current.name, patch.name),
+    qth: mergeOptional(current.qth, patch.qth),
+    notes: mergeOptional(current.notes, patch.notes),
+    rig: mergeOptional(current.rig, patch.rig),
+    antenna: mergeOptional(current.antenna, patch.antenna),
+    power: mergeOptional(current.power, patch.power),
+  );
+}
 
 class _CapturedSegmentAudio {
   const _CapturedSegmentAudio({
@@ -1172,14 +1518,12 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
       );
     }
     final id = await ref.read(qsoRepositoryProvider).saveQso(qsoToSave);
+    ref
+        .read(qsoSessionProvider.notifier)
+        .updateIfPresent(qsoToSave.copyWith(id: id));
     await refresh();
     ref.invalidate(localDataSummaryProvider);
     return id;
-  }
-
-  Future<void> updateStatus(String id, LogStatus status) async {
-    await ref.read(qsoRepositoryProvider).updateStatus(id, status);
-    await refresh();
   }
 
   Future<List<MapEntry<String, String>>> deleteRetainedAudio({

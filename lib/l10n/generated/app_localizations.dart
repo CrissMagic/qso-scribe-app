@@ -374,6 +374,54 @@ abstract class AppLocalizations {
   /// **'Low confidence'**
   String get lowConfidence;
 
+  /// No description provided for @reviewRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Review required'**
+  String get reviewRequired;
+
+  /// No description provided for @confirmFieldCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm correct'**
+  String get confirmFieldCorrect;
+
+  /// No description provided for @sourceExcerpt.
+  ///
+  /// In en, this message translates to:
+  /// **'Source excerpt'**
+  String get sourceExcerpt;
+
+  /// No description provided for @unreviewedFieldsRemain.
+  ///
+  /// In en, this message translates to:
+  /// **'Unreviewed fields remain; this QSO cannot be saved as confirmed'**
+  String get unreviewedFieldsRemain;
+
+  /// No description provided for @currentStructuredDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Current structured draft'**
+  String get currentStructuredDraft;
+
+  /// No description provided for @structuringInProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Updating structured fields…'**
+  String get structuringInProgress;
+
+  /// No description provided for @editField.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit field'**
+  String get editField;
+
+  /// No description provided for @noSessionQsos.
+  ///
+  /// In en, this message translates to:
+  /// **'No QSO has been saved in this session'**
+  String get noSessionQsos;
+
   /// No description provided for @aiFilled.
   ///
   /// In en, this message translates to:

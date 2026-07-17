@@ -71,6 +71,60 @@ void main() {
     expect(database.uploadUpdateCalls, 0);
     expect(database.uploadRow['status'], LogbookUploadStatus.succeeded.name);
   });
+
+  test('field review metadata survives a repository round trip', () async {
+    final database = _QsoDatabase();
+    final repository = QsoRepository(AppDatabase(database: database));
+    final existing = await repository.findQso('qso-1');
+
+    await repository.saveQso(
+      existing!.copyWith(
+        status: LogStatus.needsReview,
+        callsign: const QsoField(
+          value: 'K1ABC',
+          confidence: 0.62,
+          reviewed: true,
+          sourceText: 'kilo one alpha bravo charlie',
+        ),
+        band: const QsoField(
+          value: '20m',
+          confidence: 0.7,
+          userEdited: true,
+          sourceText: 'twenty meters',
+        ),
+      ),
+    );
+
+    final reloaded = await repository.findQso('qso-1');
+    expect(reloaded!.callsign.confidence, 0.62);
+    expect(reloaded.callsign.reviewed, isTrue);
+    expect(reloaded.callsign.sourceText, 'kilo one alpha bravo charlie');
+    expect(reloaded.band.confidence, 0.7);
+    expect(reloaded.band.userEdited, isTrue);
+    expect(reloaded.band.sourceText, 'twenty meters');
+  });
+
+  test('confirmed QSO rejects unresolved low-confidence fields', () async {
+    final database = _QsoDatabase();
+    final repository = QsoRepository(AppDatabase(database: database));
+    final existing = await repository.findQso('qso-1');
+
+    await expectLater(
+      repository.saveQso(
+        existing!.copyWith(
+          status: LogStatus.confirmed,
+          callsign: const QsoField(value: 'K1ABC', confidence: 0.6),
+        ),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'unreviewed_qso_fields',
+        ),
+      ),
+    );
+  });
 }
 
 class _QsoDatabase implements Database, Transaction {

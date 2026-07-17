@@ -18,6 +18,22 @@ enum ModelAssignmentTask { transcription, transcriptionStreaming, structuring }
 
 enum TranscriptSpeaker { other, self }
 
+enum QsoFieldKey {
+  callsign,
+  dateTime,
+  band,
+  frequency,
+  mode,
+  sentRst,
+  receivedRst,
+  name,
+  qth,
+  notes,
+  rig,
+  antenna,
+  power,
+}
+
 extension AppLocaleModeX on AppLocaleMode {
   Locale? get locale {
     return switch (this) {
@@ -70,26 +86,30 @@ class QsoField<T> {
     required this.value,
     this.confidence = 1,
     this.userEdited = false,
+    this.reviewed = false,
     this.sourceText,
   });
 
   final T value;
   final double confidence;
   final bool userEdited;
+  final bool reviewed;
   final String? sourceText;
 
-  bool get needsReview => confidence < 0.75;
+  bool get needsReview => confidence < 0.75 && !userEdited && !reviewed;
 
   QsoField<T> copyWith({
     T? value,
     double? confidence,
     bool? userEdited,
+    bool? reviewed,
     String? sourceText,
   }) {
     return QsoField<T>(
       value: value ?? this.value,
       confidence: confidence ?? this.confidence,
       userEdited: userEdited ?? this.userEdited,
+      reviewed: reviewed ?? this.reviewed,
       sourceText: sourceText ?? this.sourceText,
     );
   }
@@ -151,6 +171,21 @@ class QsoDraft {
         receivedRst.value.trim().isNotEmpty;
   }
 
+  bool get hasUnreviewedFields =>
+      _stringFieldNeedsReview(callsign) ||
+      (dateTime.value != null && dateTime.needsReview) ||
+      _stringFieldNeedsReview(band) ||
+      _stringFieldNeedsReview(frequency) ||
+      _stringFieldNeedsReview(mode) ||
+      _stringFieldNeedsReview(sentRst) ||
+      _stringFieldNeedsReview(receivedRst) ||
+      _optionalFieldNeedsReview(name) ||
+      _optionalFieldNeedsReview(qth) ||
+      _optionalFieldNeedsReview(notes) ||
+      _optionalFieldNeedsReview(rig) ||
+      _optionalFieldNeedsReview(antenna) ||
+      _optionalFieldNeedsReview(power);
+
   QsoDraft copyWith({
     String? id,
     QsoField<String>? callsign,
@@ -174,6 +209,13 @@ class QsoDraft {
     DateTime? updatedAt,
     bool clearAudioPath = false,
     bool clearRawTranscript = false,
+    bool clearErrorMessage = false,
+    bool clearName = false,
+    bool clearQth = false,
+    bool clearNotes = false,
+    bool clearRig = false,
+    bool clearAntenna = false,
+    bool clearPower = false,
   }) {
     return QsoDraft(
       id: id ?? this.id,
@@ -185,20 +227,30 @@ class QsoDraft {
       sentRst: sentRst ?? this.sentRst,
       receivedRst: receivedRst ?? this.receivedRst,
       status: status ?? this.status,
-      name: name ?? this.name,
-      qth: qth ?? this.qth,
-      notes: notes ?? this.notes,
-      rig: rig ?? this.rig,
-      antenna: antenna ?? this.antenna,
-      power: power ?? this.power,
+      name: clearName ? null : name ?? this.name,
+      qth: clearQth ? null : qth ?? this.qth,
+      notes: clearNotes ? null : notes ?? this.notes,
+      rig: clearRig ? null : rig ?? this.rig,
+      antenna: clearAntenna ? null : antenna ?? this.antenna,
+      power: clearPower ? null : power ?? this.power,
       audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
       originalAudioDeleted: originalAudioDeleted ?? this.originalAudioDeleted,
       rawTranscript: clearRawTranscript
           ? null
           : rawTranscript ?? this.rawTranscript,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: clearErrorMessage
+          ? null
+          : errorMessage ?? this.errorMessage,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  static bool _stringFieldNeedsReview(QsoField<String> field) {
+    return field.value.trim().isNotEmpty && field.needsReview;
+  }
+
+  static bool _optionalFieldNeedsReview(QsoField<String>? field) {
+    return field != null && _stringFieldNeedsReview(field);
   }
 }
 
@@ -207,21 +259,20 @@ class QsoCaptureState {
     required this.currentDraft,
     this.transcriptSegments = const [],
     this.warningMessage,
-    this.pendingStructuring = false,
+    this.isStructuring = false,
   });
 
   final QsoDraft currentDraft;
   final List<TranscriptSegment> transcriptSegments;
   final String? warningMessage;
 
-  /// 流式录音已停止，转写文本待用户点击 AI 处理进行结构化。
-  final bool pendingStructuring;
+  final bool isStructuring;
 
   QsoCaptureState copyWith({
     QsoDraft? currentDraft,
     List<TranscriptSegment>? transcriptSegments,
     String? warningMessage,
-    bool? pendingStructuring,
+    bool? isStructuring,
     bool clearWarning = false,
   }) {
     return QsoCaptureState(
@@ -230,7 +281,7 @@ class QsoCaptureState {
       warningMessage: clearWarning
           ? null
           : warningMessage ?? this.warningMessage,
-      pendingStructuring: pendingStructuring ?? this.pendingStructuring,
+      isStructuring: isStructuring ?? this.isStructuring,
     );
   }
 }

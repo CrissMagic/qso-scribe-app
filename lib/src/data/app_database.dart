@@ -8,7 +8,7 @@ class AppDatabase {
       _databasePath = databasePath;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 9;
+  static const databaseVersion = 10;
 
   Database? _database;
   final String? _databasePath;
@@ -70,6 +70,9 @@ class AppDatabase {
     if (oldVersion < 9) {
       await _migrateToV9(db);
     }
+    if (oldVersion < 10) {
+      await _migrateToV10(db);
+    }
   }
 
   static Future<void> _createCoreTables(DatabaseExecutor db) async {
@@ -127,6 +130,7 @@ CREATE TABLE IF NOT EXISTS qso_logs (
   audio_path TEXT,
   original_audio_deleted INTEGER NOT NULL DEFAULT 0,
   raw_transcript TEXT,
+  field_metadata TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 )
@@ -332,6 +336,17 @@ CREATE TABLE IF NOT EXISTS token_usage (
   // v9：记录外部日志网站单条上传结果；不改变本地 QSO 主状态。
   static Future<void> _migrateToV9(Database db) async {
     await _createLogbookUploadTable(db);
+  }
+
+  // v10：以单列 JSON 保存全部 QSO 字段的置信度、复核、编辑和来源元数据。
+  static Future<void> _migrateToV10(Database db) async {
+    final columns = await db.rawQuery('PRAGMA table_info(qso_logs)');
+    final hasFieldMetadata = columns.any(
+      (row) => row['name'] == 'field_metadata',
+    );
+    if (!hasFieldMetadata) {
+      await db.execute('ALTER TABLE qso_logs ADD COLUMN field_metadata TEXT');
+    }
   }
 
   static Future<void> _createLogbookUploadTable(DatabaseExecutor db) async {

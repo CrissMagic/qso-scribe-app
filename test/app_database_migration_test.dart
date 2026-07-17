@@ -11,9 +11,9 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
-  test('真实 SQLite 文件从 v8 升级到 v9 并保留原有 QSO', () async {
+  test('真实 SQLite 文件从 v8 升级到 v10 并保留原有 QSO', () async {
     final tempDir = await Directory.systemTemp.createTemp(
-      'qso_scribe_v8_to_v9_',
+      'qso_scribe_v8_to_v10_',
     );
     final databasePath = p.join(tempDir.path, AppDatabase.databaseName);
     Database? opened;
@@ -53,6 +53,13 @@ CREATE TABLE qso_logs (
         await database.rawQuery(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
           ['logbook_uploads'],
+        ),
+        isNotEmpty,
+      );
+      expect(
+        await database.rawQuery(
+          "SELECT name FROM pragma_table_info('qso_logs') WHERE name = ?",
+          ['field_metadata'],
         ),
         isNotEmpty,
       );

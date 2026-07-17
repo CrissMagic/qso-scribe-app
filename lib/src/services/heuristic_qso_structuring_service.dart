@@ -14,32 +14,75 @@ class HeuristicQsoStructuringService {
     final band = _extractBand(rawText, frequency);
     final mode = _extractMode(rawText);
     final reports = _extractSignalReports(rawText);
+    final extractedDateTime = dateTime ?? _extractDateTime(rawText);
 
     return QsoDraft(
       callsign: QsoField(
         value: callsign ?? '',
         confidence: callsign == null ? 0.2 : 0.78,
-        sourceText: rawText,
+        sourceText: callsign == null ? null : _sourceExcerpt(rawText, callsign),
       ),
-      dateTime: QsoField(value: dateTime ?? _extractDateTime(rawText)),
-      band: QsoField(value: band ?? '', confidence: band == null ? 0.2 : 0.8),
+      dateTime: QsoField(
+        value: extractedDateTime,
+        confidence: dateTime != null
+            ? 1
+            : extractedDateTime == null
+            ? 0.2
+            : 0.8,
+        sourceText: dateTime != null || extractedDateTime == null
+            ? null
+            : _sourceExcerpt(rawText, ''),
+      ),
+      band: QsoField(
+        value: band ?? '',
+        confidence: band == null ? 0.2 : 0.8,
+        sourceText: band == null ? null : _sourceExcerpt(rawText, band),
+      ),
       frequency: QsoField(
         value: frequency ?? '',
         confidence: frequency == null ? 0.2 : 0.84,
+        sourceText: frequency == null
+            ? null
+            : _sourceExcerpt(rawText, frequency),
       ),
-      mode: QsoField(value: mode ?? '', confidence: mode == null ? 0.2 : 0.8),
+      mode: QsoField(
+        value: mode ?? '',
+        confidence: mode == null ? 0.2 : 0.8,
+        sourceText: mode == null ? null : _sourceExcerpt(rawText, mode),
+      ),
       sentRst: QsoField(
         value: reports.sent ?? '',
         confidence: reports.sent == null ? 0.2 : 0.7,
+        sourceText: reports.sent == null
+            ? null
+            : _sourceExcerpt(rawText, reports.sent!),
       ),
       receivedRst: QsoField(
         value: reports.received ?? '',
         confidence: reports.received == null ? 0.2 : 0.7,
+        sourceText: reports.received == null
+            ? null
+            : _sourceExcerpt(rawText, reports.received!),
       ),
       status: status,
       audioPath: audioPath,
       rawTranscript: rawText,
     );
+  }
+
+  String _sourceExcerpt(String text, String value) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    final needle = value.trim().toLowerCase();
+    final index = needle.isEmpty ? -1 : trimmed.toLowerCase().indexOf(needle);
+    if (index < 0) {
+      return trimmed.length <= 160 ? trimmed : '${trimmed.substring(0, 160)}…';
+    }
+    final start = (index - 32).clamp(0, trimmed.length);
+    final end = (index + needle.length + 32).clamp(0, trimmed.length);
+    return trimmed.substring(start, end);
   }
 
   String? _extractCallsign(String text) {

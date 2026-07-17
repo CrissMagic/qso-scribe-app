@@ -147,6 +147,30 @@ class AppLocalizationsZh extends AppLocalizations {
   String get lowConfidence => '低置信度';
 
   @override
+  String get reviewRequired => '需要复核';
+
+  @override
+  String get confirmFieldCorrect => '确认无误';
+
+  @override
+  String get sourceExcerpt => '来源片段';
+
+  @override
+  String get unreviewedFieldsRemain => '仍有未复核字段，不能保存为已确认状态';
+
+  @override
+  String get currentStructuredDraft => '当前结构化草稿';
+
+  @override
+  String get structuringInProgress => '正在更新结构化结果…';
+
+  @override
+  String get editField => '编辑字段';
+
+  @override
+  String get noSessionQsos => '本次会话尚未保存 QSO';
+
+  @override
   String get aiFilled => 'AI 填写';
 
   @override

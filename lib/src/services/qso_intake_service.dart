@@ -104,7 +104,10 @@ class QsoIntakeService {
   }) {
     return QsoDraft(
       callsign: const QsoField(value: '', confidence: 0.2),
-      dateTime: QsoField<DateTime?>(value: dateTime),
+      dateTime: QsoField<DateTime?>(
+        value: dateTime,
+        confidence: dateTime == null ? 0.2 : 1,
+      ),
       band: const QsoField(value: '', confidence: 0.2),
       frequency: const QsoField(value: '', confidence: 0.2),
       mode: const QsoField(value: '', confidence: 0.2),
