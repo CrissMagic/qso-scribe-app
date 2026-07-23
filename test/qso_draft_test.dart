@@ -39,6 +39,16 @@ void main() {
       status: LogStatus.needsReview,
       audioPath: '/app/audio/qso.pcm',
       rawTranscript: 'K1ABC five nine',
+      transcriptSegments: const [
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.unknown,
+          text: 'K1ABC five nine',
+          isFinal: true,
+          audioPath: '/app/audio/qso.pcm',
+          startOffset: Duration.zero,
+          endOffset: Duration(seconds: 2),
+        ),
+      ],
     );
 
     final cleared = draft.copyWith(
@@ -48,6 +58,46 @@ void main() {
 
     expect(cleared.audioPath, isNull);
     expect(cleared.rawTranscript, isNull);
+    expect(cleared.transcriptSegments, isEmpty);
+  });
+
+  test('deleting audio keeps transcript timeline but disables playback', () {
+    final draft = QsoDraft(
+      callsign: const QsoField(value: 'K1ABC'),
+      dateTime: QsoField(value: DateTime(2026, 6, 12)),
+      band: const QsoField(value: '20m'),
+      frequency: const QsoField(value: ''),
+      mode: const QsoField(value: 'SSB'),
+      sentRst: const QsoField(value: '59'),
+      receivedRst: const QsoField(value: '59'),
+      status: LogStatus.needsReview,
+      audioPath: '/app/audio/qso.pcm',
+      rawTranscript: 'K1ABC five nine',
+      transcriptSegments: const [
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.other,
+          text: 'K1ABC five nine',
+          isFinal: true,
+          audioPath: '/app/audio/qso.pcm',
+          startOffset: Duration(seconds: 1),
+          endOffset: Duration(seconds: 3),
+        ),
+      ],
+    );
+
+    final cleared = draft.copyWith(clearAudioPath: true);
+
+    expect(cleared.rawTranscript, 'K1ABC five nine');
+    expect(cleared.transcriptSegments, hasLength(1));
+    expect(
+      cleared.transcriptSegments.single.startOffset,
+      const Duration(seconds: 1),
+    );
+    expect(
+      cleared.transcriptSegments.single.endOffset,
+      const Duration(seconds: 3),
+    );
+    expect(cleared.transcriptSegments.single.audioPath, isNull);
   });
 
   test('low-confidence fields require review until confirmed or edited', () {
@@ -111,8 +161,18 @@ void main() {
         isFinal: true,
         errorMessage: 'transcription_failed',
       ),
+      const TranscriptSegment(
+        speaker: TranscriptSpeaker.unknown,
+        text: 'five nine',
+        isFinal: true,
+      ),
     ]);
 
-    expect(text, '[对方] CQ CQ 这里是 VR2ABC\n[我方] BI1XYZ 回答你，信号五九');
+    expect(
+      text,
+      '[对方] CQ CQ 这里是 VR2ABC\n'
+      '[我方] BI1XYZ 回答你，信号五九\n'
+      '[待确认] five nine',
+    );
   });
 }

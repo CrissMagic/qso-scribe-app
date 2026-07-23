@@ -8,19 +8,26 @@ class HeuristicQsoStructuringService {
     String? audioPath,
     DateTime? dateTime,
     LogStatus status = LogStatus.needsReview,
+    Set<String> ignoredCallsigns = const {},
   }) {
-    final callsign = _extractCallsign(rawText);
-    final frequency = _extractFrequency(rawText);
-    final band = _extractBand(rawText, frequency);
-    final mode = _extractMode(rawText);
-    final reports = _extractSignalReports(rawText);
-    final extractedDateTime = dateTime ?? _extractDateTime(rawText);
+    final transcriptText = _withoutOwnStationContext(rawText);
+    final callsign = _extractCallsign(
+      transcriptText,
+      ignoredCallsigns: ignoredCallsigns,
+    );
+    final frequency = _extractFrequency(transcriptText);
+    final band = _extractBand(transcriptText, frequency);
+    final mode = _extractMode(transcriptText);
+    final reports = _extractSignalReports(transcriptText);
+    final extractedDateTime = dateTime ?? _extractDateTime(transcriptText);
 
     return QsoDraft(
       callsign: QsoField(
         value: callsign ?? '',
         confidence: callsign == null ? 0.2 : 0.78,
-        sourceText: callsign == null ? null : _sourceExcerpt(rawText, callsign),
+        sourceText: callsign == null
+            ? null
+            : _sourceExcerpt(transcriptText, callsign),
       ),
       dateTime: QsoField(
         value: extractedDateTime,
@@ -31,43 +38,51 @@ class HeuristicQsoStructuringService {
             : 0.8,
         sourceText: dateTime != null || extractedDateTime == null
             ? null
-            : _sourceExcerpt(rawText, ''),
+            : _sourceExcerpt(transcriptText, ''),
       ),
       band: QsoField(
         value: band ?? '',
         confidence: band == null ? 0.2 : 0.8,
-        sourceText: band == null ? null : _sourceExcerpt(rawText, band),
+        sourceText: band == null ? null : _sourceExcerpt(transcriptText, band),
       ),
       frequency: QsoField(
         value: frequency ?? '',
         confidence: frequency == null ? 0.2 : 0.84,
         sourceText: frequency == null
             ? null
-            : _sourceExcerpt(rawText, frequency),
+            : _sourceExcerpt(transcriptText, frequency),
       ),
       mode: QsoField(
         value: mode ?? '',
         confidence: mode == null ? 0.2 : 0.8,
-        sourceText: mode == null ? null : _sourceExcerpt(rawText, mode),
+        sourceText: mode == null ? null : _sourceExcerpt(transcriptText, mode),
       ),
       sentRst: QsoField(
         value: reports.sent ?? '',
         confidence: reports.sent == null ? 0.2 : 0.7,
         sourceText: reports.sent == null
             ? null
-            : _sourceExcerpt(rawText, reports.sent!),
+            : _sourceExcerpt(transcriptText, reports.sent!),
       ),
       receivedRst: QsoField(
         value: reports.received ?? '',
         confidence: reports.received == null ? 0.2 : 0.7,
         sourceText: reports.received == null
             ? null
-            : _sourceExcerpt(rawText, reports.received!),
+            : _sourceExcerpt(transcriptText, reports.received!),
       ),
       status: status,
       audioPath: audioPath,
-      rawTranscript: rawText,
+      rawTranscript: transcriptText,
     );
+  }
+
+  String _withoutOwnStationContext(String text) {
+    return text
+        .split(RegExp(r'\r?\n'))
+        .where((line) => !line.trimLeft().startsWith('[我方资料]'))
+        .join('\n')
+        .trim();
   }
 
   String _sourceExcerpt(String text, String value) {
@@ -85,17 +100,23 @@ class HeuristicQsoStructuringService {
     return trimmed.substring(start, end);
   }
 
-  String? _extractCallsign(String text) {
+  String? _extractCallsign(
+    String text, {
+    required Set<String> ignoredCallsigns,
+  }) {
     final normalized = text.toUpperCase();
-    final direct = RegExp(
+    for (final match in RegExp(
       r'\b[A-Z]{1,2}[0-9][A-Z0-9]{1,4}\b',
-    ).firstMatch(normalized);
-    if (direct != null) {
-      return direct.group(0);
+    ).allMatches(normalized)) {
+      final callsign = match.group(0)!;
+      if (!ignoredCallsigns.contains(callsign)) {
+        return callsign;
+      }
     }
 
     final spoken = _spokenCallsign(text);
     if (spoken != null &&
+        !ignoredCallsigns.contains(spoken) &&
         RegExp(r'^[A-Z]{1,2}[0-9][A-Z0-9]{1,4}$').hasMatch(spoken)) {
       return spoken;
     }

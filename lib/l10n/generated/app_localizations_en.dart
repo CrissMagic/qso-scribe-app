@@ -431,6 +431,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myStation => 'My station';
 
   @override
+  String get unknownStation => 'Needs confirmation';
+
+  @override
   String get unrecognizedSpeech => 'No transcript recognized';
 
   @override

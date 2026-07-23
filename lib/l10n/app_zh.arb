@@ -136,6 +136,7 @@
   "audioPlaybackFailed": "音频播放失败",
   "otherStation": "对方",
   "myStation": "我方",
+  "unknownStation": "待确认",
   "unrecognizedSpeech": "未识别到文字",
   "switchToMyStation": "标记为我方",
   "switchToOtherStation": "标记为对方",

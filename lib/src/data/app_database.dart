@@ -8,7 +8,7 @@ class AppDatabase {
       _databasePath = databasePath;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 10;
+  static const databaseVersion = 11;
 
   Database? _database;
   final String? _databasePath;
@@ -72,6 +72,9 @@ class AppDatabase {
     }
     if (oldVersion < 10) {
       await _migrateToV10(db);
+    }
+    if (oldVersion < 11) {
+      await _migrateToV11(db);
     }
   }
 
@@ -149,17 +152,7 @@ CREATE TABLE IF NOT EXISTS qso_logs (
       'CREATE INDEX IF NOT EXISTS idx_qso_logs_mode ON qso_logs(mode)',
     );
 
-    await db.execute('''
-CREATE TABLE IF NOT EXISTS transcript_segments (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  qso_id TEXT NOT NULL,
-  speaker TEXT NOT NULL,
-  text TEXT NOT NULL,
-  is_final INTEGER NOT NULL,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY(qso_id) REFERENCES qso_logs(id) ON DELETE CASCADE
-)
-''');
+    await _createTranscriptSegmentTable(db);
 
     await db.execute('''
 CREATE TABLE IF NOT EXISTS import_jobs (
@@ -217,6 +210,25 @@ CREATE TABLE IF NOT EXISTS token_usage (
     );
 
     await _createLogbookUploadTable(db);
+  }
+
+  static Future<void> _createTranscriptSegmentTable(DatabaseExecutor db) async {
+    await db.execute('''
+CREATE TABLE IF NOT EXISTS transcript_segments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  qso_id TEXT NOT NULL,
+  speaker TEXT NOT NULL,
+  text TEXT NOT NULL,
+  is_final INTEGER NOT NULL,
+  start_offset_ms INTEGER,
+  end_offset_ms INTEGER,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY(qso_id) REFERENCES qso_logs(id) ON DELETE CASCADE
+)
+''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_transcript_segments_qso ON transcript_segments(qso_id)',
+    );
   }
 
   static Future<void> _migrateToV2(Database db) async {
@@ -347,6 +359,65 @@ CREATE TABLE IF NOT EXISTS token_usage (
     if (!hasFieldMetadata) {
       await db.execute('ALTER TABLE qso_logs ADD COLUMN field_metadata TEXT');
     }
+  }
+
+  // v11：持久化转写分段的近似音频起止偏移，并将旧原文补为单个待确认分段。
+  static Future<void> _migrateToV11(Database db) async {
+    await db.transaction((txn) async {
+      await _createTranscriptSegmentTable(txn);
+      final segmentColumns = await txn.rawQuery(
+        'PRAGMA table_info(transcript_segments)',
+      );
+      if (!segmentColumns.any((row) => row['name'] == 'start_offset_ms')) {
+        await txn.execute(
+          'ALTER TABLE transcript_segments ADD COLUMN start_offset_ms INTEGER',
+        );
+      }
+      if (!segmentColumns.any((row) => row['name'] == 'end_offset_ms')) {
+        await txn.execute(
+          'ALTER TABLE transcript_segments ADD COLUMN end_offset_ms INTEGER',
+        );
+      }
+
+      final qsoColumns = await txn.rawQuery('PRAGMA table_info(qso_logs)');
+      final hasRawTranscript = qsoColumns.any(
+        (row) => row['name'] == 'raw_transcript',
+      );
+      if (!hasRawTranscript) {
+        return;
+      }
+      final createdAtExpression =
+          qsoColumns.any((row) => row['name'] == 'updated_at')
+          ? 'q.updated_at'
+          : "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+      await txn.execute('''
+INSERT INTO transcript_segments (
+  qso_id,
+  speaker,
+  text,
+  is_final,
+  start_offset_ms,
+  end_offset_ms,
+  created_at
+)
+SELECT
+  q.id,
+  'unknown',
+  q.raw_transcript,
+  1,
+  NULL,
+  NULL,
+  $createdAtExpression
+FROM qso_logs q
+WHERE q.raw_transcript IS NOT NULL
+  AND q.raw_transcript != ''
+  AND NOT EXISTS (
+    SELECT 1
+    FROM transcript_segments segment
+    WHERE segment.qso_id = q.id
+  )
+''');
+    });
   }
 
   static Future<void> _createLogbookUploadTable(DatabaseExecutor db) async {

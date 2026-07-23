@@ -42,7 +42,7 @@ void main() {
 
     final release = await service.fetchLatestRelease();
 
-    expect(release.version, '1.2.3+4');
+    expect(release.version, '1.2.3');
     expect(release.title, 'Version 1.2.3');
     expect(release.notes, 'Fixes and improvements');
     expect(
@@ -253,4 +253,12 @@ void main() {
       expect(packageVersionWithBuild('1.0.0', '1.0.0'), '1.0.0');
     },
   );
+
+  test('packageVersionForDisplay hides release build metadata', () {
+    expect(packageVersionForDisplay('1.2.3', '4', development: false), '1.2.3');
+    expect(
+      packageVersionForDisplay('1.2.3-debug', '4', development: true),
+      '1.2.3-debug+4',
+    );
+  });
 }

@@ -68,7 +68,14 @@ class QsoRepository {
       orderBy: 'qso_datetime DESC',
     );
 
-    return rows.map(decodeQsoRow).toList();
+    final segmentsByQso = await _loadTranscriptSegments(db, rows);
+    return [
+      for (final row in rows)
+        decodeQsoRow(
+          row,
+          transcriptSegments: segmentsByQso[row['id'] as String] ?? const [],
+        ),
+    ];
   }
 
   Future<QsoDraft?> findQso(String id) async {
@@ -82,7 +89,12 @@ class QsoRepository {
     if (rows.isEmpty) {
       return null;
     }
-    return decodeQsoRow(rows.single);
+    final segmentsByQso = await _loadTranscriptSegments(db, rows);
+    return decodeQsoRow(
+      rows.single,
+      transcriptSegments:
+          segmentsByQso[rows.single['id'] as String] ?? const [],
+    );
   }
 
   Future<String> saveQso(QsoDraft qso) async {
@@ -100,12 +112,18 @@ class QsoRepository {
     final db = await _database.instance;
     final now = DateTime.now().toUtc().toIso8601String();
     final id = qso.id ?? newLocalId('qso');
-    if (qso.id == null) {
-      await db.insert('qso_logs', _encodeQso(qso, id: id, timestamp: now));
-      return id;
-    }
-
     await db.transaction((txn) async {
+      if (qso.id == null) {
+        await txn.insert('qso_logs', _encodeQso(qso, id: id, timestamp: now));
+        await _replaceTranscriptSegments(
+          txn,
+          qsoId: id,
+          segments: qso.transcriptSegments,
+          timestamp: now,
+        );
+        return;
+      }
+
       final rows = await txn.query(
         'qso_logs',
         where: 'id = ?',
@@ -114,6 +132,12 @@ class QsoRepository {
       );
       if (rows.isEmpty) {
         await txn.insert('qso_logs', _encodeQso(qso, id: id, timestamp: now));
+        await _replaceTranscriptSegments(
+          txn,
+          qsoId: id,
+          segments: qso.transcriptSegments,
+          timestamp: now,
+        );
         return;
       }
 
@@ -125,6 +149,12 @@ class QsoRepository {
         createdAt: rows.single['created_at'] as String,
       );
       await txn.update('qso_logs', encoded, where: 'id = ?', whereArgs: [id]);
+      await _replaceTranscriptSegments(
+        txn,
+        qsoId: id,
+        segments: qso.transcriptSegments,
+        timestamp: now,
+      );
       if (toAdifRecord(existing) != toAdifRecord(decodeQsoRow(encoded))) {
         await txn.update(
           'logbook_uploads',
@@ -172,29 +202,41 @@ class QsoRepository {
   }
 
   Future<void> clearRawTranscript(String id) async {
-    final db = await _database.instance;
-    await db.update(
-      'qso_logs',
-      {
-        'raw_transcript': null,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await setRawTranscript(id, null);
   }
 
-  Future<void> setRawTranscript(String id, String? rawTranscript) async {
+  Future<void> setRawTranscript(
+    String id,
+    String? rawTranscript, {
+    List<TranscriptSegment>? transcriptSegments,
+  }) async {
     final db = await _database.instance;
-    await db.update(
-      'qso_logs',
-      {
-        'raw_transcript': rawTranscript,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final now = DateTime.now().toUtc().toIso8601String();
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+        'qso_logs',
+        {'raw_transcript': rawTranscript, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (updated == 0) {
+        return;
+      }
+      if (rawTranscript == null) {
+        await txn.delete(
+          'transcript_segments',
+          where: 'qso_id = ?',
+          whereArgs: [id],
+        );
+      } else if (transcriptSegments != null) {
+        await _replaceTranscriptSegments(
+          txn,
+          qsoId: id,
+          segments: transcriptSegments,
+          timestamp: now,
+        );
+      }
+    });
   }
 
   Future<void> clearAllAudioPaths() async {
@@ -208,10 +250,14 @@ class QsoRepository {
 
   Future<void> clearAllRawTranscripts() async {
     final db = await _database.instance;
-    await db.update('qso_logs', {
-      'raw_transcript': null,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }, where: "raw_transcript IS NOT NULL AND raw_transcript != ''");
+    const where = "raw_transcript IS NOT NULL AND raw_transcript != ''";
+    await db.transaction((txn) async {
+      await txn.delete('transcript_segments');
+      await txn.update('qso_logs', {
+        'raw_transcript': null,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }, where: where);
+    });
   }
 
   Future<int> countRetainedAudio() async {
@@ -224,10 +270,91 @@ class QsoRepository {
 
   Future<int> countRawTranscripts() async {
     final db = await _database.instance;
-    final result = await db.rawQuery(
-      "SELECT COUNT(*) AS count FROM qso_logs WHERE raw_transcript IS NOT NULL AND raw_transcript != ''",
-    );
+    final result = await db.rawQuery('''
+SELECT COUNT(*) AS count
+FROM qso_logs q
+WHERE (q.raw_transcript IS NOT NULL AND q.raw_transcript != '')
+   OR EXISTS (
+     SELECT 1 FROM transcript_segments segment WHERE segment.qso_id = q.id
+   )
+''');
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<Map<String, List<TranscriptSegment>>> _loadTranscriptSegments(
+    DatabaseExecutor db,
+    List<Map<String, Object?>> qsoRows,
+  ) async {
+    if (qsoRows.isEmpty) {
+      return const {};
+    }
+    final audioPathByQso = <String, String?>{
+      for (final row in qsoRows)
+        row['id'] as String: row['audio_path'] as String?,
+    };
+    final qsoIds = audioPathByQso.keys.toList(growable: false);
+    final result = <String, List<TranscriptSegment>>{};
+    const batchSize = 500;
+    for (var start = 0; start < qsoIds.length; start += batchSize) {
+      final end = start + batchSize < qsoIds.length
+          ? start + batchSize
+          : qsoIds.length;
+      final batch = qsoIds.sublist(start, end);
+      final placeholders = List.filled(batch.length, '?').join(', ');
+      final rows = await db.query(
+        'transcript_segments',
+        where: 'qso_id IN ($placeholders)',
+        whereArgs: batch,
+        orderBy: 'qso_id ASC, id ASC',
+      );
+      for (final row in rows) {
+        final qsoId = row['qso_id'] as String;
+        (result[qsoId] ??= []).add(
+          _decodeTranscriptSegment(row, audioPath: audioPathByQso[qsoId]),
+        );
+      }
+    }
+    return result;
+  }
+
+  Future<void> _replaceTranscriptSegments(
+    DatabaseExecutor db, {
+    required String qsoId,
+    required List<TranscriptSegment> segments,
+    required String timestamp,
+  }) async {
+    for (final segment in segments) {
+      final startOffset = segment.startOffset;
+      final endOffset = segment.endOffset;
+      if ((startOffset == null) != (endOffset == null)) {
+        throw StateError('incomplete_transcript_segment_timeline');
+      }
+      if (startOffset?.isNegative == true ||
+          endOffset?.isNegative == true ||
+          (startOffset != null &&
+              endOffset != null &&
+              endOffset < startOffset)) {
+        throw StateError('invalid_transcript_segment_timeline');
+      }
+    }
+    await db.delete(
+      'transcript_segments',
+      where: 'qso_id = ?',
+      whereArgs: [qsoId],
+    );
+    for (final segment in segments) {
+      final startOffset = segment.startOffset;
+      final endOffset = segment.endOffset;
+      await db.insert('transcript_segments', {
+        'qso_id': qsoId,
+        'speaker': segment.speaker.name,
+        'text': segment.text,
+        'is_final': encodeBool(segment.isFinal),
+        'start_offset_ms': startOffset?.inMilliseconds,
+        'end_offset_ms': endOffset?.inMilliseconds,
+        'created_at': timestamp,
+      });
+    }
   }
 
   Map<String, Object?> _encodeQso(
@@ -280,7 +407,10 @@ class QsoRepository {
   }
 }
 
-QsoDraft decodeQsoRow(Map<String, Object?> row) {
+QsoDraft decodeQsoRow(
+  Map<String, Object?> row, {
+  List<TranscriptSegment> transcriptSegments = const [],
+}) {
   final status = decodeLogStatus(row['status'] as String?);
   final metadata = _decodeFieldMetadata(row['field_metadata'] as String?);
   final legacyReviewed =
@@ -365,7 +495,50 @@ QsoDraft decodeQsoRow(Map<String, Object?> row) {
     audioPath: row['audio_path'] as String?,
     originalAudioDeleted: decodeBool(row['original_audio_deleted']),
     rawTranscript: row['raw_transcript'] as String?,
+    transcriptSegments: transcriptSegments,
     updatedAt: DateTime.parse(row['updated_at'] as String).toUtc(),
+  );
+}
+
+TranscriptSegment _decodeTranscriptSegment(
+  Map<String, Object?> row, {
+  required String? audioPath,
+}) {
+  final speakerName = row['speaker'] as String?;
+  TranscriptSpeaker? speaker;
+  for (final candidate in TranscriptSpeaker.values) {
+    if (candidate.name == speakerName) {
+      speaker = candidate;
+      break;
+    }
+  }
+  if (speaker == null) {
+    throw const FormatException('invalid_transcript_segment_speaker');
+  }
+
+  final startMs = (row['start_offset_ms'] as num?)?.toInt();
+  final endMs = (row['end_offset_ms'] as num?)?.toInt();
+  if ((startMs == null) != (endMs == null)) {
+    throw const FormatException('incomplete_transcript_segment_timeline');
+  }
+  if ((startMs != null && startMs < 0) ||
+      (endMs != null && endMs < 0) ||
+      (startMs != null && endMs != null && endMs < startMs)) {
+    throw const FormatException('invalid_transcript_segment_timeline');
+  }
+  final startOffset = startMs == null ? null : Duration(milliseconds: startMs);
+  final endOffset = endMs == null ? null : Duration(milliseconds: endMs);
+  return TranscriptSegment(
+    id: row['id'].toString(),
+    speaker: speaker,
+    text: row['text'] as String,
+    isFinal: decodeBool(row['is_final']),
+    audioPath: audioPath,
+    duration: startOffset == null || endOffset == null
+        ? null
+        : endOffset - startOffset,
+    startOffset: startOffset,
+    endOffset: endOffset,
   );
 }
 

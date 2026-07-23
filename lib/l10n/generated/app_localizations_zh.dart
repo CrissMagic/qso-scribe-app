@@ -417,6 +417,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get myStation => '我方';
 
   @override
+  String get unknownStation => '待确认';
+
+  @override
   String get unrecognizedSpeech => '未识别到文字';
 
   @override

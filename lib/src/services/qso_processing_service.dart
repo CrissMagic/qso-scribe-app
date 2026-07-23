@@ -11,6 +11,49 @@ import '../domain/provider_catalog.dart';
 import 'ai_provider_clients.dart';
 import 'heuristic_qso_structuring_service.dart';
 
+String normalizeCallsign(String value) =>
+    value.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9/]'), '');
+
+final _stationCallsignPart = RegExp(r'\d[A-Z]+$');
+
+// ponytail: slash variants use the station-looking segment; add a prefix
+// catalog only if uncommon special calls ending in digits are misclassified.
+Set<String> callsignIdentities(String value) {
+  final normalized = normalizeCallsign(value);
+  if (normalized.isEmpty) {
+    return const {};
+  }
+  final stationParts = normalized
+      .split('/')
+      .where(_stationCallsignPart.hasMatch)
+      .toSet();
+  return {normalized, ...stationParts};
+}
+
+bool callsignsMatch(String left, String right) {
+  final leftIdentities = callsignIdentities(left);
+  final rightIdentities = callsignIdentities(right);
+  return leftIdentities.isNotEmpty &&
+      leftIdentities.any(rightIdentities.contains);
+}
+
+String buildQsoStructuringInput(
+  String transcriptText, {
+  required String ownCallsign,
+  required String ownQth,
+}) {
+  final normalizedCallsign = normalizeCallsign(ownCallsign);
+  final normalizedQth = ownQth.trim();
+  final stationFields = [
+    if (normalizedCallsign.isNotEmpty) 'callsign=$normalizedCallsign',
+    if (normalizedQth.isNotEmpty) 'qth=$normalizedQth',
+  ];
+  if (stationFields.isEmpty) {
+    return transcriptText;
+  }
+  return '[我方资料] ${stationFields.join('; ')}\n$transcriptText';
+}
+
 class QsoStructuredDraftParser {
   const QsoStructuredDraftParser();
 
@@ -129,12 +172,14 @@ class QsoProcessingService {
     required ModelRepository modelRepository,
     required HeuristicQsoStructuringService heuristicStructuringService,
     required TokenUsageRepository tokenUsageRepository,
+    required Future<AppSettings> Function() loadSettings,
     http.Client? httpClient,
   }) : _providerRepository = providerRepository,
        _modelAssignmentRepository = modelAssignmentRepository,
        _modelRepository = modelRepository,
        _heuristicStructuringService = heuristicStructuringService,
        _tokenUsageRepository = tokenUsageRepository,
+       _loadSettings = loadSettings,
        _httpClient = httpClient ?? http.Client() {
     _asrClient = ProviderAsrClient(_httpClient);
     _structuringClient = ProviderStructuringClient(_httpClient);
@@ -145,6 +190,7 @@ class QsoProcessingService {
   final ModelRepository _modelRepository;
   final HeuristicQsoStructuringService _heuristicStructuringService;
   final TokenUsageRepository _tokenUsageRepository;
+  final Future<AppSettings> Function() _loadSettings;
   final http.Client _httpClient;
   late final ProviderAsrClient _asrClient;
   late final ProviderStructuringClient _structuringClient;
@@ -156,10 +202,12 @@ class QsoProcessingService {
   }) async {
     final assignment = await _assignment(ModelAssignmentTask.structuring);
     if (assignment == null) {
+      final settings = await _loadSettings();
       return _heuristicStructuringService.createDraftFromText(
         rawText: rawText,
         audioPath: audioPath,
         dateTime: dateTime,
+        ignoredCallsigns: callsignIdentities(settings.callsign),
       );
     }
     return _structureTranscript(
@@ -174,13 +222,41 @@ class QsoProcessingService {
     required String audioPath,
     DateTime? qsoStartedAt,
   }) async {
-    final transcript = await _transcribeAudio(audioPath);
+    final settings = await _loadSettings();
+    final transcript = await _transcribeAudio(
+      audioPath,
+      contextualHotWords: callsignIdentities(settings.callsign),
+    );
     try {
-      return await createDraftFromText(
-        transcript,
+      var draft = await createDraftFromText(
+        buildQsoStructuringInput(
+          transcript,
+          ownCallsign: settings.callsign,
+          ownQth: settings.qth,
+        ),
         audioPath: audioPath,
         dateTime: qsoStartedAt,
       );
+      draft = draft.copyWith(
+        rawTranscript: transcript,
+        transcriptSegments: [
+          TranscriptSegment(
+            speaker: TranscriptSpeaker.unknown,
+            text: transcript,
+            isFinal: true,
+            audioPath: audioPath,
+          ),
+        ],
+      );
+      if (callsignsMatch(draft.callsign.value, settings.callsign)) {
+        draft = draft.copyWith(
+          callsign: const QsoField(value: '', confidence: 0.2),
+        );
+      }
+      if (draft.qth?.sourceText?.contains('[我方资料]') == true) {
+        draft = draft.copyWith(clearQth: true);
+      }
+      return draft;
     } catch (error) {
       throw QsoStructuringException(
         message: error.toString(),
@@ -233,7 +309,10 @@ class QsoProcessingService {
     );
   }
 
-  Future<String> _transcribeAudio(String audioPath) async {
+  Future<String> _transcribeAudio(
+    String audioPath, {
+    Iterable<String> contextualHotWords = const [],
+  }) async {
     final assignment = await _assignment(ModelAssignmentTask.transcription);
     if (assignment == null) {
       throw StateError('no_transcription_model_assigned');
@@ -262,6 +341,7 @@ class QsoProcessingService {
       apiKey: provider.apiKey,
       modelName: model.name,
       audioPath: audioPath,
+      contextualHotWords: contextualHotWords,
     );
     await _recordUsage(
       provider: descriptor.provider.name,
@@ -317,6 +397,10 @@ confidence must be an object with numeric 0-1 confidence for each extracted fiel
 sourceText must be an object keyed by field name. For each extracted field, use a short exact excerpt from the transcript that supports the value; use null when no supporting excerpt exists.
 Prefer the operator's latest correction when the transcript contains a spoken correction.
 Do not invent missing required fields. Keep missing fields as empty strings or null.
+The optional [我方资料] line is context only. Never copy its callsign or QTH into the QSO fields.
+QSO callsign, name, and QTH always describe the other station. Ignore those details when spoken by [我方].
+[待确认] means the speaker is unknown; infer ownership only from explicit conversational evidence.
+For RST, [我方] giving "your report" is sentRst, while [对方] giving "your report" is receivedRst.
 
 ## Amateur Radio Terminology Reference
 

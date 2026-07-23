@@ -131,7 +131,7 @@ void main() {
     );
   });
 
-  testWidgets('未复核字段存在时 QRZ 上传不可用', (tester) async {
+  testWidgets('复核字段会解除 QRZ 上传门禁', (tester) async {
     final draft = QsoDraft(
       id: 'qso-test',
       callsign: const QsoField(value: 'K1ABC', confidence: 0.6),
@@ -178,6 +178,94 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    await tester.ensureVisible(find.text('Confirm correct'));
+    await tester.tap(find.text('Confirm correct'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 1000));
+    await tester.pumpAndSettle();
+
+    final enabledUploadButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'Upload'),
+    );
+    expect(enabledUploadButton.onPressed, isNotNull);
+  });
+
+  testWidgets('持久化转写默认折叠并按时间轴气泡展示', (tester) async {
+    final repository = _CapturingQsoRepository();
+    final draft = QsoDraft(
+      callsign: const QsoField(value: 'K1ABC'),
+      dateTime: QsoField(value: DateTime(2026, 7, 22, 10)),
+      band: const QsoField(value: '20m'),
+      frequency: const QsoField(value: '14.250'),
+      mode: const QsoField(value: 'SSB'),
+      sentRst: const QsoField(value: '59'),
+      receivedRst: const QsoField(value: '57'),
+      status: LogStatus.needsReview,
+      audioPath: '/app/audio/qso.wav',
+      rawTranscript: 'plain full transcript',
+      transcriptSegments: const [
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.other,
+          text: 'K1ABC five nine',
+          isFinal: true,
+          startOffset: Duration.zero,
+          endOffset: Duration(seconds: 1),
+        ),
+        TranscriptSegment(
+          speaker: TranscriptSpeaker.self,
+          text: 'BA1SELF roger',
+          isFinal: true,
+          startOffset: Duration(seconds: 1),
+          endOffset: Duration(milliseconds: 2500),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWith(_TestAppSettingsNotifier.new),
+          stationEquipmentProvider.overrideWith(
+            _EmptyStationEquipmentNotifier.new,
+          ),
+          qsoRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: QsoReviewScreen(draft: draft),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('retained-transcript-expansion')),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -180));
+    await tester.pumpAndSettle();
+
+    expect(find.text('K1ABC five nine'), findsNothing);
+    await tester.tap(find.text('Original transcript'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('K1ABC five nine'), findsOneWidget);
+    expect(find.text('BA1SELF roger'), findsOneWidget);
+    expect(find.text('0.0–1.0s'), findsOneWidget);
+    expect(find.text('1.0–2.5s'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Confirm and save'));
+    await tester.tap(find.text('Confirm and save'));
+    await tester.pumpAndSettle();
+    expect(repository.saved?.transcriptSegments, hasLength(2));
   });
 }
 

@@ -185,8 +185,9 @@ class ReleaseInfoService {
 
   String _releaseVersionFromTag(String tagName) {
     final version = tagName.startsWith('v') ? tagName.substring(1) : tagName;
-    if (RegExp(r'^\d+\.\d+\.\d+\+\d+$').hasMatch(version)) {
-      return version;
+    final match = RegExp(r'^(\d+\.\d+\.\d+)\+\d+$').firstMatch(version);
+    if (match != null) {
+      return match.group(1)!;
     }
     throw const ReleaseInfoException(ReleaseInfoFailureReason.badResponse);
   }
@@ -215,6 +216,17 @@ String packageVersionWithBuild(String version, String buildNumber) {
     return cleanVersion;
   }
   return '$cleanVersion+$cleanBuild';
+}
+
+String packageVersionForDisplay(
+  String version,
+  String buildNumber, {
+  required bool development,
+}) {
+  final releaseVersion = version.trim().split('+').first;
+  return development
+      ? packageVersionWithBuild(releaseVersion, buildNumber)
+      : releaseVersion;
 }
 
 class _ParsedVersion {

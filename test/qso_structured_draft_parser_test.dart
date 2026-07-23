@@ -4,6 +4,26 @@ import 'package:qso_scribe_app/src/services/qso_processing_service.dart';
 void main() {
   const parser = QsoStructuredDraftParser();
 
+  test('结构化输入附加规范化本台资料但不改写转写正文', () {
+    expect(
+      buildQsoStructuringInput(
+        'CQ test',
+        ownCallsign: ' f/ba1self/p ',
+        ownQth: ' Beijing ',
+      ),
+      '[我方资料] callsign=F/BA1SELF/P; qth=Beijing\nCQ test',
+    );
+    expect(
+      buildQsoStructuringInput('CQ test', ownCallsign: '', ownQth: ''),
+      'CQ test',
+    );
+  });
+
+  test('便携呼号与其中的台站呼号视为同一身份', () {
+    expect(callsignsMatch('F/BA1SELF/P', 'BA1SELF'), isTrue);
+    expect(callsignsMatch('F/BA1SELF/P', 'K1ABC'), isFalse);
+  });
+
   test('按字段读取结构化结果的来源片段', () {
     final draft = parser.parse({
       'callsign': 'K1ABC',

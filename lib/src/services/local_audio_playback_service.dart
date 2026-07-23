@@ -11,9 +11,23 @@ class LocalAudioPlaybackService {
 
   final MethodChannel _channel;
 
-  Future<void> play(String sourcePath) async {
+  Future<void> play(
+    String sourcePath, {
+    Duration? startOffset,
+    Duration? endOffset,
+  }) async {
+    if (startOffset?.isNegative == true || endOffset?.isNegative == true) {
+      throw ArgumentError('audio offsets cannot be negative');
+    }
+    if (startOffset != null && endOffset != null && endOffset <= startOffset) {
+      throw ArgumentError('audio end offset must be after start offset');
+    }
     final playablePath = await playableAudioPathFor(sourcePath);
-    await _channel.invokeMethod<void>('play', {'path': playablePath});
+    await _channel.invokeMethod<void>('play', {
+      'path': playablePath,
+      if (startOffset != null) 'startMs': startOffset.inMilliseconds,
+      if (endOffset != null) 'endMs': endOffset.inMilliseconds,
+    });
   }
 
   Future<void> stop() {

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
@@ -15,6 +17,8 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private var player: MediaPlayer? = null
     private var pendingPlayResult: MethodChannel.Result? = null
+    private val playbackHandler = Handler(Looper.getMainLooper())
+    private var scheduledStop: Runnable? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -28,7 +32,12 @@ class MainActivity : FlutterActivity() {
                     if (path.isNullOrBlank()) {
                         result.error("invalid_audio_path", "Audio path is required", null)
                     } else {
-                        playAudio(path, result)
+                        playAudio(
+                            path,
+                            call.argument<Number>("startMs")?.toInt(),
+                            call.argument<Number>("endMs")?.toInt(),
+                            result,
+                        )
                     }
                 }
                 "stop" -> {
@@ -54,7 +63,19 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
-    private fun playAudio(path: String, result: MethodChannel.Result) {
+    private fun playAudio(
+        path: String,
+        startMs: Int?,
+        endMs: Int?,
+        result: MethodChannel.Result,
+    ) {
+        if (startMs != null && startMs < 0 ||
+            endMs != null && endMs < 0 ||
+            startMs != null && endMs != null && endMs <= startMs
+        ) {
+            result.error("invalid_audio_range", "Invalid audio playback range", null)
+            return
+        }
         val file = File(path)
         if (!file.exists()) {
             result.error("audio_file_missing", "Audio file does not exist", null)
@@ -76,7 +97,54 @@ class MainActivity : FlutterActivity() {
                 true
             }
             mediaPlayer.prepare()
-            mediaPlayer.start()
+            val resolvedStartMs = startMs ?: 0
+            val durationMs = mediaPlayer.duration
+            if (durationMs > 0 && resolvedStartMs >= durationMs) {
+                finishPlayback(
+                    "invalid_audio_range",
+                    "Audio start offset is outside the recording",
+                )
+                return
+            }
+            val resolvedEndMs = endMs?.let { requestedEnd ->
+                if (durationMs > 0) minOf(requestedEnd, durationMs) else requestedEnd
+            }
+            if (resolvedEndMs != null && resolvedEndMs <= resolvedStartMs) {
+                finishPlayback(
+                    "invalid_audio_range",
+                    "Audio end offset must be after the start offset",
+                )
+                return
+            }
+
+            fun startPreparedPlayback() {
+                if (player !== mediaPlayer) {
+                    return
+                }
+                mediaPlayer.start()
+                if (resolvedEndMs != null) {
+                    val stop = Runnable {
+                        if (player === mediaPlayer) {
+                            finishPlayback(null, null)
+                        }
+                    }
+                    scheduledStop = stop
+                    playbackHandler.postDelayed(
+                        stop,
+                        (resolvedEndMs - resolvedStartMs).toLong(),
+                    )
+                }
+            }
+
+            if (resolvedStartMs > 0) {
+                mediaPlayer.setOnSeekCompleteListener {
+                    mediaPlayer.setOnSeekCompleteListener(null)
+                    startPreparedPlayback()
+                }
+                mediaPlayer.seekTo(resolvedStartMs)
+            } else {
+                startPreparedPlayback()
+            }
         } catch (error: Exception) {
             finishPlayback(
                 "audio_playback_failed",
@@ -86,6 +154,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun stopAudio() {
+        cancelScheduledStop()
         val current = player
         player = null
         if (current != null) {
@@ -103,6 +172,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun finishPlayback(errorCode: String?, errorMessage: String?) {
+        cancelScheduledStop()
         val current = player
         player = null
         current?.release()
@@ -113,6 +183,14 @@ class MainActivity : FlutterActivity() {
             result?.success(null)
         } else {
             result?.error(errorCode, errorMessage, null)
+        }
+    }
+
+    private fun cancelScheduledStop() {
+        val stop = scheduledStop
+        scheduledStop = null
+        if (stop != null) {
+            playbackHandler.removeCallbacks(stop)
         }
     }
 

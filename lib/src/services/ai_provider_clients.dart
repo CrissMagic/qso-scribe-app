@@ -27,8 +27,9 @@ Map<String, String> _authHeaders(AuthStyle style, String? apiKey) {
 }
 
 String _joinPath(String baseUrl, String suffix) {
-  final normalized =
-      baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+  final normalized = baseUrl.endsWith('/')
+      ? baseUrl.substring(0, baseUrl.length - 1)
+      : baseUrl;
   return '$normalized/$suffix';
 }
 
@@ -44,6 +45,30 @@ String _mimeTypeFor(String path) {
     '.aac' => 'audio/aac',
     _ => 'audio/wav',
   };
+}
+
+String? _mergeHotWords(
+  String? configuredHotWords,
+  Iterable<String> contextualHotWords,
+) {
+  if (configuredHotWords == null) {
+    return null;
+  }
+  final entries = configuredHotWords
+      .split(',')
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList();
+  final knownWords = entries
+      .map((value) => value.split(':').first.trim().toUpperCase())
+      .toSet();
+  for (final value in contextualHotWords) {
+    final word = value.trim().toUpperCase();
+    if (word.isNotEmpty && knownWords.add(word)) {
+      entries.add('$word:20');
+    }
+  }
+  return entries.isEmpty ? null : entries.join(',');
 }
 
 /// 从响应体解析 OpenAI 兼容的 usage 字段；不存在时返回 null。
@@ -71,7 +96,8 @@ String? _chatContent(String body) {
       return null;
     }
     final message =
-        (choices.first as Map<String, Object?>)['message'] as Map<String, Object?>?;
+        (choices.first as Map<String, Object?>)['message']
+            as Map<String, Object?>?;
     return message?['content']?.toString();
   } catch (_) {
     return null;
@@ -90,6 +116,7 @@ class ProviderAsrClient {
     required String? apiKey,
     required String modelName,
     required String audioPath,
+    Iterable<String> contextualHotWords = const [],
   }) async {
     final spec = descriptor.asr;
     if (spec == null) {
@@ -99,19 +126,20 @@ class ProviderAsrClient {
     _validateAudioFormat(uploadPath, spec);
     return switch (spec.shape) {
       AsrShape.whisperMultipart => _transcribeWhisper(
-          descriptor: descriptor,
-          baseUrl: baseUrl,
-          apiKey: apiKey,
-          modelName: modelName,
-          uploadPath: uploadPath,
-        ),
+        descriptor: descriptor,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        modelName: modelName,
+        uploadPath: uploadPath,
+        contextualHotWords: contextualHotWords,
+      ),
       AsrShape.chatInputAudio => _transcribeChatInputAudio(
-          descriptor: descriptor,
-          baseUrl: baseUrl,
-          apiKey: apiKey,
-          modelName: modelName,
-          uploadPath: uploadPath,
-        ),
+        descriptor: descriptor,
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+        modelName: modelName,
+        uploadPath: uploadPath,
+      ),
     };
   }
 
@@ -138,17 +166,22 @@ class ProviderAsrClient {
     required String? apiKey,
     required String modelName,
     required String uploadPath,
+    required Iterable<String> contextualHotWords,
   }) async {
     if (!File(uploadPath).existsSync()) {
       throw StateError('audio_file_missing');
     }
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(_joinPath(baseUrl, 'audio/transcriptions')),
-    )
-      ..fields['model'] = modelName
-      ..files.add(await http.MultipartFile.fromPath('file', uploadPath));
-    final hotWords = descriptor.asr?.hotWords;
+    final request =
+        http.MultipartRequest(
+            'POST',
+            Uri.parse(_joinPath(baseUrl, 'audio/transcriptions')),
+          )
+          ..fields['model'] = modelName
+          ..files.add(await http.MultipartFile.fromPath('file', uploadPath));
+    final hotWords = _mergeHotWords(
+      descriptor.asr?.hotWords,
+      contextualHotWords,
+    );
     if (hotWords != null && hotWords.isNotEmpty) {
       request.fields['hot_words'] = hotWords;
     }
@@ -180,7 +213,8 @@ class ProviderAsrClient {
       throw StateError('audio_file_missing');
     }
     final bytes = await file.readAsBytes();
-    final dataUrl = 'data:${_mimeTypeFor(uploadPath)};base64,${base64Encode(bytes)}';
+    final dataUrl =
+        'data:${_mimeTypeFor(uploadPath)};base64,${base64Encode(bytes)}';
     final body = <String, Object?>{
       'model': modelName,
       'messages': [

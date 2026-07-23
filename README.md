@@ -91,7 +91,7 @@ flutter build apk --debug --target-platform android-arm64
 
 ### 发布 Android Release APK
 
-正式发布通过 GitHub Actions 完成。推送 tag 会触发 `.github/workflows/release.yml`，流水线会运行 `flutter analyze`、`flutter test`，再构建签名 APK 并上传到 GitHub Release。
+正式发布通过 GitHub Actions 完成。发布前先更新 `RELEASE_NOTES.md`，推送 tag 会触发 `.github/workflows/release.yml`，流水线会运行 `flutter analyze`、`flutter test`，再构建签名 APK 并上传到 GitHub Release。
 
 发布 tag 必须和 `pubspec.yaml` 的 `version` 完全一致，格式为：
 
@@ -108,6 +108,8 @@ git push origin v0.1.2+3
 ```
 
 GitHub Release 资产会使用 `qso-scribe-app-<version>-build<build-number>-android.apk` 命名，例如 `qso-scribe-app-0.1.2-build3-android.apk`。应用内更新检查会识别并下载该 APK。
+
+`+<build-number>` 仅作为 Android 内部构建号以及开发版本标识。正式版界面和 GitHub Release 标题只展示 `<major>.<minor>.<patch>`；每次正式发布必须递增该版本号，且构建号必须大于所有历史正式版本的构建号。
 
 ## 项目结构
 
@@ -225,7 +227,7 @@ flutter build apk --debug --target-platform android-arm64
 
 ### Publish Android Release APK
 
-Production releases are built by GitHub Actions. Pushing a tag triggers `.github/workflows/release.yml`; the workflow runs `flutter analyze`, `flutter test`, builds the signed APK, and uploads it to GitHub Releases.
+Production releases are built by GitHub Actions. Update `RELEASE_NOTES.md` before publishing. Pushing a tag triggers `.github/workflows/release.yml`; the workflow runs `flutter analyze`, `flutter test`, builds the signed APK, and uploads it to GitHub Releases.
 
 The release tag must exactly match `pubspec.yaml` `version` and use this format:
 
@@ -242,6 +244,8 @@ git push origin v0.1.2+3
 ```
 
 The GitHub Release asset is named `qso-scribe-app-<version>-build<build-number>-android.apk`, for example `qso-scribe-app-0.1.2-build3-android.apk`. The in-app updater detects and downloads that APK.
+
+`+<build-number>` is only an internal Android build number and development-build identifier. Production UI and GitHub Release titles show only `<major>.<minor>.<patch>`. Every production release must increment that version, and its build number must exceed every previous production build number.
 
 ## Project Structure
 

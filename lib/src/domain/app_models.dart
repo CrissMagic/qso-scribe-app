@@ -16,7 +16,7 @@ enum ModelCapability { speech, streaming, text, structuring }
 
 enum ModelAssignmentTask { transcription, transcriptionStreaming, structuring }
 
-enum TranscriptSpeaker { other, self }
+enum TranscriptSpeaker { unknown, other, self }
 
 enum QsoFieldKey {
   callsign,
@@ -135,6 +135,7 @@ class QsoDraft {
     this.audioPath,
     this.originalAudioDeleted = false,
     this.rawTranscript,
+    this.transcriptSegments = const [],
     this.errorMessage,
     this.updatedAt,
   });
@@ -157,6 +158,7 @@ class QsoDraft {
   final String? audioPath;
   final bool originalAudioDeleted;
   final String? rawTranscript;
+  final List<TranscriptSegment> transcriptSegments;
   final DateTime? updatedAt;
 
   /// 处理提示（不持久化到数据库）。
@@ -205,6 +207,7 @@ class QsoDraft {
     String? audioPath,
     bool? originalAudioDeleted,
     String? rawTranscript,
+    List<TranscriptSegment>? transcriptSegments,
     String? errorMessage,
     DateTime? updatedAt,
     bool clearAudioPath = false,
@@ -217,6 +220,19 @@ class QsoDraft {
     bool clearAntenna = false,
     bool clearPower = false,
   }) {
+    final resolvedAudioPath = clearAudioPath
+        ? null
+        : audioPath ?? this.audioPath;
+    final sourceSegments = clearRawTranscript
+        ? const <TranscriptSegment>[]
+        : transcriptSegments ?? this.transcriptSegments;
+    final resolvedSegments = [
+      for (final segment in sourceSegments)
+        if (resolvedAudioPath == null)
+          segment.copyWith(clearAudioPath: true)
+        else
+          segment.copyWith(audioPath: resolvedAudioPath),
+    ];
     return QsoDraft(
       id: id ?? this.id,
       callsign: callsign ?? this.callsign,
@@ -233,11 +249,12 @@ class QsoDraft {
       rig: clearRig ? null : rig ?? this.rig,
       antenna: clearAntenna ? null : antenna ?? this.antenna,
       power: clearPower ? null : power ?? this.power,
-      audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
+      audioPath: resolvedAudioPath,
       originalAudioDeleted: originalAudioDeleted ?? this.originalAudioDeleted,
       rawTranscript: clearRawTranscript
           ? null
           : rawTranscript ?? this.rawTranscript,
+      transcriptSegments: resolvedSegments,
       errorMessage: clearErrorMessage
           ? null
           : errorMessage ?? this.errorMessage,
@@ -335,6 +352,8 @@ class TranscriptSegment {
     required this.isFinal,
     this.audioPath,
     this.duration,
+    this.startOffset,
+    this.endOffset,
     this.errorMessage,
   });
 
@@ -344,6 +363,8 @@ class TranscriptSegment {
   final bool isFinal;
   final String? audioPath;
   final Duration? duration;
+  final Duration? startOffset;
+  final Duration? endOffset;
   final String? errorMessage;
 
   bool get hasText => text.trim().isNotEmpty;
@@ -355,6 +376,8 @@ class TranscriptSegment {
     bool? isFinal,
     String? audioPath,
     Duration? duration,
+    Duration? startOffset,
+    Duration? endOffset,
     String? errorMessage,
     bool clearAudioPath = false,
     bool clearError = false,
@@ -366,6 +389,8 @@ class TranscriptSegment {
       isFinal: isFinal ?? this.isFinal,
       audioPath: clearAudioPath ? null : audioPath ?? this.audioPath,
       duration: duration ?? this.duration,
+      startOffset: startOffset ?? this.startOffset,
+      endOffset: endOffset ?? this.endOffset,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
@@ -383,6 +408,7 @@ String formatTranscriptSegmentsForStructuring(
 
 String _transcriptSpeakerAiLabel(TranscriptSpeaker speaker) {
   return switch (speaker) {
+    TranscriptSpeaker.unknown => '待确认',
     TranscriptSpeaker.other => '对方',
     TranscriptSpeaker.self => '我方',
   };

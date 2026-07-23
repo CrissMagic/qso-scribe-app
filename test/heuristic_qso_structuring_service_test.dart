@@ -28,4 +28,25 @@ void main() {
     expect(draft.dateTime.confidence, 1);
     expect(draft.dateTime.sourceText, isNull);
   });
+
+  test('启发式解析忽略我方资料，只保留真实转写', () {
+    final draft = service.createDraftFromText(
+      rawText:
+          '[我方资料] callsign=BA1SELF; qth=Beijing\n'
+          '[待确认] K1ABC on 14.250 SSB',
+    );
+
+    expect(draft.callsign.value, 'K1ABC');
+    expect(draft.rawTranscript, '[待确认] K1ABC on 14.250 SSB');
+    expect(draft.callsign.sourceText, isNot(contains('BA1SELF')));
+  });
+
+  test('启发式解析跳过我方呼号并继续提取对方呼号', () {
+    final draft = service.createDraftFromText(
+      rawText: 'BA1SELF this is K1ABC on 14.250 SSB',
+      ignoredCallsigns: const {'BA1SELF'},
+    );
+
+    expect(draft.callsign.value, 'K1ABC');
+  });
 }

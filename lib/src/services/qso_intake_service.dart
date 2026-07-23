@@ -77,15 +77,28 @@ class QsoIntakeService {
         errorMessage: error.message,
       );
     }
-    return applyRecognitionRetention(draft);
+    final settings = await _loadSettings();
+    return _applyRecognitionRetention(
+      _removeOwnStationFields(draft, settings),
+      settings,
+    );
   }
 
   Future<QsoDraft> applyRecognitionRetention(QsoDraft draft) async {
+    if (draft.audioPath == null) {
+      return draft;
+    }
+    return _applyRecognitionRetention(draft, await _loadSettings());
+  }
+
+  Future<QsoDraft> _applyRecognitionRetention(
+    QsoDraft draft,
+    AppSettings settings,
+  ) async {
     final audioPath = draft.audioPath;
     if (audioPath == null) {
       return draft;
     }
-    final settings = await _loadSettings();
     if (settings.audioRetentionPolicy !=
         AudioRetentionPolicy.deleteAfterRecognition) {
       return draft;
@@ -117,7 +130,47 @@ class QsoIntakeService {
       audioPath: audioPath,
       originalAudioDeleted: originalAudioDeleted,
       rawTranscript: rawTranscript,
+      transcriptSegments:
+          audioPath != null && rawTranscript?.trim().isNotEmpty == true
+          ? [
+              TranscriptSegment(
+                speaker: TranscriptSpeaker.unknown,
+                text: rawTranscript!,
+                isFinal: true,
+                audioPath: audioPath,
+              ),
+            ]
+          : const [],
       errorMessage: errorMessage,
+    );
+  }
+
+  QsoDraft _removeOwnStationFields(QsoDraft draft, AppSettings settings) {
+    final qth = draft.qth;
+    final sourceText = qth?.sourceText ?? '';
+    final ownQth = settings.qth.trim();
+    final marksSelf =
+        sourceText.contains('[我方]') || sourceText.contains('[我方资料]');
+    final marksOther = sourceText.contains('[对方]');
+    final isOwnQth = marksSelf && !marksOther;
+    final sameQthNeedsReview =
+        (qth != null &&
+        ownQth.isNotEmpty &&
+        qth.value.trim().toLowerCase() == ownQth.toLowerCase() &&
+        !marksOther &&
+        !isOwnQth);
+    return draft.copyWith(
+      callsign: callsignsMatch(draft.callsign.value, settings.callsign)
+          ? const QsoField(value: '', confidence: 0.2)
+          : draft.callsign,
+      qth: sameQthNeedsReview
+          ? qth.copyWith(
+              confidence: qth.confidence < 0.75 ? qth.confidence : 0.74,
+              userEdited: false,
+              reviewed: false,
+            )
+          : qth,
+      clearQth: isOwnQth,
     );
   }
 }

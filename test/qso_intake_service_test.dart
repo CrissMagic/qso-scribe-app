@@ -24,6 +24,8 @@ void main() {
     expect(draft.dateTime.value, startedAt);
     expect(draft.rawTranscript, 'CQ CQ this is K1ABC');
     expect(draft.audioPath, '/app/audio/qso.wav');
+    expect(draft.transcriptSegments, hasLength(1));
+    expect(draft.transcriptSegments.single.speaker, TranscriptSpeaker.unknown);
     expect(draft.originalAudioDeleted, isFalse);
     expect(draft.errorMessage, contains('structuring_failed'));
   });
@@ -56,6 +58,8 @@ void main() {
       expect(draft.audioPath, isNull);
       expect(draft.originalAudioDeleted, isTrue);
       expect(draft.rawTranscript, 'K1ABC five nine');
+      expect(draft.transcriptSegments, hasLength(1));
+      expect(draft.transcriptSegments.single.audioPath, isNull);
     },
   );
 
@@ -98,6 +102,12 @@ void main() {
       expect(draft.rawTranscript, 'K1ABC five nine');
       expect(draft.audioPath, isNull);
       expect(draft.originalAudioDeleted, isTrue);
+      expect(draft.transcriptSegments, hasLength(1));
+      expect(
+        draft.transcriptSegments.single.speaker,
+        TranscriptSpeaker.unknown,
+      );
+      expect(draft.transcriptSegments.single.audioPath, isNull);
       expect(deleted, ['/app/audio/qso.wav']);
     },
   );
@@ -114,6 +124,50 @@ void main() {
       service.reviewDraftFromAudio(audioPath: '/app/audio/qso.wav'),
       throwsA(isA<StateError>()),
     );
+  });
+
+  test('after-QSO only drops explicitly self QTH', () async {
+    var callCount = 0;
+    final service = _service(
+      settings: const AppSettings.defaults().copyWith(
+        callsign: 'BA1SELF',
+        qth: 'Beijing',
+      ),
+      createDraftFromAudio:
+          ({required String audioPath, DateTime? qsoStartedAt}) async {
+            callCount += 1;
+            return _draft(
+              audioPath: audioPath,
+              dateTime: qsoStartedAt,
+            ).copyWith(
+              callsign: const QsoField(value: 'BA1SELF'),
+              qth: QsoField(
+                value: 'Beijing',
+                sourceText: switch (callCount) {
+                  1 => 'QTH Beijing',
+                  2 => '[我方] QTH Beijing',
+                  _ => '[对方] QTH Beijing',
+                },
+              ),
+            );
+          },
+    );
+
+    final uncertain = await service.reviewDraftFromAudio(
+      audioPath: '/app/audio/first.wav',
+    );
+    final ownStation = await service.reviewDraftFromAudio(
+      audioPath: '/app/audio/second.wav',
+    );
+    final explicitOther = await service.reviewDraftFromAudio(
+      audioPath: '/app/audio/third.wav',
+    );
+
+    expect(uncertain.qth?.value, 'Beijing');
+    expect(uncertain.qth?.needsReview, isTrue);
+    expect(ownStation.callsign.value, isEmpty);
+    expect(ownStation.qth, isNull);
+    expect(explicitOther.qth?.value, 'Beijing');
   });
 }
 
@@ -156,6 +210,16 @@ QsoDraft _draft({
     status: LogStatus.needsReview,
     audioPath: audioPath,
     rawTranscript: rawTranscript,
+    transcriptSegments: audioPath != null && rawTranscript != null
+        ? [
+            TranscriptSegment(
+              speaker: TranscriptSpeaker.unknown,
+              text: rawTranscript,
+              isFinal: true,
+              audioPath: audioPath,
+            ),
+          ]
+        : const [],
   );
 }
 

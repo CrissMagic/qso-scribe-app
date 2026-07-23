@@ -223,9 +223,10 @@ class _MainShellState extends ConsumerState<MainShell> {
       if (_isTestBuild(info)) {
         return;
       }
-      final currentVersion = packageVersionWithBuild(
+      final currentVersion = packageVersionForDisplay(
         info.version,
         info.buildNumber,
+        development: false,
       );
       final updateState = await ref
           .read(appUpdateProvider.notifier)
@@ -269,6 +270,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return Scaffold(
       body: pages[_index],
       bottomNavigationBar: NavigationBar(
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),
         destinations: [
@@ -499,12 +501,15 @@ class _StreamingTab extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 16),
+          _TranscriptCard(
+            segments: transcript,
+            otherCallsign: capture.currentDraft.callsign.value,
+          ),
+          const SizedBox(height: 16),
           _RealtimeDraftCard(
             draft: capture.currentDraft,
             isStructuring: capture.isStructuring,
           ),
-          const SizedBox(height: 16),
-          _TranscriptCard(segments: transcript),
           const SizedBox(height: 16),
           _CurrentSessionCard(qsos: sessionQsos),
         ],
@@ -614,50 +619,38 @@ class _RealtimeDraftCard extends ConsumerWidget {
         field: draft.notes ?? const QsoField(value: ''),
       ),
     ];
+    final dateTime = draft.dateTime.value == null
+        ? '—'
+        : _formatDateTime(draft.dateTime.value!);
+    final callsign = draft.callsign.value.trim();
+    final summary = callsign.isEmpty ? dateTime : '$callsign · $dateTime';
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_fix_high),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    l10n.currentStructuredDraft,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${l10n.dateTime}: ${draft.dateTime.value == null ? '—' : _formatDateTime(draft.dateTime.value!)}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            if (isStructuring) ...[
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(),
-              const SizedBox(height: 4),
-              Text(
-                l10n.structuringInProgress,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ],
-            const SizedBox(height: 8),
-            for (final item in fields)
-              _RealtimeDraftFieldTile(
-                item: item,
-                onEdit: () => _editField(context, ref, item),
-                onReview: () => ref
-                    .read(qsoCaptureProvider.notifier)
-                    .reviewCurrentDraftField(item.key),
-              ),
-          ],
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        leading: const Icon(Icons.auto_fix_high),
+        title: Text(l10n.currentStructuredDraft),
+        subtitle: Text(
+          isStructuring ? l10n.structuringInProgress : summary,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          if (isStructuring) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 8),
+          ],
+          for (final item in fields)
+            _RealtimeDraftFieldTile(
+              item: item,
+              onEdit: () => _editField(context, ref, item),
+              onReview: () => ref
+                  .read(qsoCaptureProvider.notifier)
+                  .reviewCurrentDraftField(item.key),
+            ),
+        ],
       ),
     );
   }
@@ -1964,7 +1957,11 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
     if (info == null) {
       return '-';
     }
-    return packageVersionWithBuild(info.version, info.buildNumber);
+    return packageVersionForDisplay(
+      info.version,
+      info.buildNumber,
+      development: _isTestBuild(info),
+    );
   }
 
   Future<void> _checkUpdate() async {
@@ -3072,9 +3069,10 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     final version = _packageInfo == null
         ? '-'
-        : packageVersionWithBuild(
+        : packageVersionForDisplay(
             _packageInfo!.version,
             _packageInfo!.buildNumber,
+            development: _isTestBuild(_packageInfo!),
           );
     return Scaffold(
       appBar: AppBar(title: Text(l10n.about)),
@@ -3977,6 +3975,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   late String? _audioPath;
   late bool _originalAudioDeleted;
   late String? _rawTranscript;
+  late List<TranscriptSegment> _transcriptSegments;
   bool _isAudioPlaying = false;
   String? _audioPlaybackError;
   bool _retrying = false;
@@ -4009,6 +4008,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     _audioPath = draft.audioPath;
     _originalAudioDeleted = draft.originalAudioDeleted;
     _rawTranscript = draft.rawTranscript;
+    _transcriptSegments = draft.transcriptSegments;
   }
 
   @override
@@ -4467,17 +4467,28 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 onDelete: _audioPath == null ? null : _deleteRetainedAudio,
               ),
               const SizedBox(height: 12),
-              _RetainedDataCard(
-                title: l10n.originalTranscript,
-                text: _rawTranscript?.trim().isNotEmpty ?? false
-                    ? _rawTranscript!
-                    : l10n.noRawTranscript,
-                icon: Icons.notes,
-                deleteLabel: l10n.deleteRawTranscript,
-                onDelete: _rawTranscript?.trim().isNotEmpty ?? false
-                    ? _deleteRawTranscript
-                    : null,
-              ),
+              if (_transcriptSegments.isNotEmpty)
+                _RetainedTranscriptCard(
+                  title: l10n.originalTranscript,
+                  segments: _transcriptSegments,
+                  otherCallsign: _callsignController.text,
+                  deleteLabel: l10n.deleteRawTranscript,
+                  onDelete: _rawTranscript?.trim().isNotEmpty ?? false
+                      ? _deleteRawTranscript
+                      : null,
+                )
+              else
+                _RetainedDataCard(
+                  title: l10n.originalTranscript,
+                  text: _rawTranscript?.trim().isNotEmpty ?? false
+                      ? _rawTranscript!
+                      : l10n.noRawTranscript,
+                  icon: Icons.notes,
+                  deleteLabel: l10n.deleteRawTranscript,
+                  onDelete: _rawTranscript?.trim().isNotEmpty ?? false
+                      ? _deleteRawTranscript
+                      : null,
+                ),
             ],
           ),
         ],
@@ -4618,6 +4629,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       audioPath: _audioPath,
       originalAudioDeleted: _originalAudioDeleted,
       rawTranscript: _rawTranscript,
+      transcriptSegments: _transcriptSegments,
       errorMessage: draft.errorMessage,
       updatedAt: draft.updatedAt,
     );
@@ -4752,6 +4764,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
         _audioPath = draft.audioPath;
         _originalAudioDeleted = draft.originalAudioDeleted;
         _rawTranscript = draft.rawTranscript;
+        _transcriptSegments = draft.transcriptSegments;
       });
     } catch (_) {
       if (!mounted) return;
@@ -4953,6 +4966,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     setState(() {
       _audioPath = null;
       _originalAudioDeleted = true;
+      _transcriptSegments = [
+        for (final segment in _transcriptSegments)
+          segment.copyWith(clearAudioPath: true),
+      ];
       _isAudioPlaying = false;
       _audioPlaybackError = null;
     });
@@ -4973,6 +4990,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               setState(() {
                 _audioPath = audioPath;
                 _originalAudioDeleted = false;
+                _transcriptSegments = [
+                  for (final segment in _transcriptSegments)
+                    segment.copyWith(audioPath: audioPath),
+                ];
               });
             }
           },
@@ -5021,6 +5042,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
 
   Future<void> _deleteRawTranscript() async {
     final previousText = _rawTranscript;
+    final previousSegments = _transcriptSegments;
     final previousQsoId = widget.draft.id;
     final previousImportId = widget.importJobId;
     final confirmed = await _confirmDestructiveAction(
@@ -5048,7 +5070,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
     if (!mounted) {
       return;
     }
-    setState(() => _rawTranscript = null);
+    setState(() {
+      _rawTranscript = null;
+      _transcriptSegments = const [];
+    });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(context.l10n.rawTranscriptDeleted),
@@ -5061,6 +5086,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   .restoreRawTranscript(
                     qsoId: previousQsoId,
                     rawTranscript: previousText,
+                    transcriptSegments: previousSegments,
                   );
             }
             if (previousImportId != null) {
@@ -5069,7 +5095,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   .restoreRawText(previousImportId, previousImportRawText);
             }
             if (mounted) {
-              setState(() => _rawTranscript = previousText);
+              setState(() {
+                _rawTranscript = previousText;
+                _transcriptSegments = previousSegments;
+              });
             }
           },
         ),
@@ -5243,12 +5272,14 @@ class _StatusPanel extends StatelessWidget {
 }
 
 class _TranscriptCard extends ConsumerWidget {
-  const _TranscriptCard({required this.segments});
+  const _TranscriptCard({required this.segments, required this.otherCallsign});
 
   final List<TranscriptSegment> segments;
+  final String otherCallsign;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ownCallsign = ref.watch(callsignProvider);
     return _CardSection(
       title: context.l10n.liveTranscript,
       children: [
@@ -5295,7 +5326,13 @@ class _TranscriptCard extends ConsumerWidget {
           _TranscriptBubble(
             key: ValueKey(segments[index].id ?? 'partial_$index'),
             segment: segments[index],
-            index: index,
+            ownCallsign: ownCallsign,
+            otherCallsign: otherCallsign,
+            onSpeakerChanged: segments[index].isFinal
+                ? (speaker) => ref
+                      .read(qsoCaptureProvider.notifier)
+                      .updateTranscriptSpeaker(index, speaker)
+                : null,
           ),
       ],
     );
@@ -5306,11 +5343,15 @@ class _TranscriptBubble extends ConsumerStatefulWidget {
   const _TranscriptBubble({
     super.key,
     required this.segment,
-    required this.index,
+    required this.ownCallsign,
+    required this.otherCallsign,
+    this.onSpeakerChanged,
   });
 
   final TranscriptSegment segment;
-  final int index;
+  final String ownCallsign;
+  final String otherCallsign;
+  final ValueChanged<TranscriptSpeaker>? onSpeakerChanged;
 
   @override
   ConsumerState<_TranscriptBubble> createState() => _TranscriptBubbleState();
@@ -5373,16 +5414,24 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
                         ActionChip(
                           avatar: const Icon(Icons.swap_horiz, size: 16),
                           label: Text(
-                            _transcriptSpeakerLabel(context, segment.speaker),
+                            _transcriptSpeakerDisplayLabel(
+                              context,
+                              segment.speaker,
+                              ownCallsign: widget.ownCallsign,
+                              otherCallsign: widget.otherCallsign,
+                            ),
                           ),
-                          onPressed: segment.isFinal ? _toggleSpeaker : null,
+                          onPressed:
+                              segment.isFinal && widget.onSpeakerChanged != null
+                              ? _toggleSpeaker
+                              : null,
                           tooltip: segment.speaker == TranscriptSpeaker.self
                               ? context.l10n.switchToOtherStation
                               : context.l10n.switchToMyStation,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _formatSpeechDuration(segment.duration),
+                          _formatSpeechTimeline(segment),
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: textColor,
                             fontFeatures: const [FontFeature.tabularFigures()],
@@ -5459,12 +5508,12 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
   }
 
   void _toggleSpeaker() {
-    final next = widget.segment.speaker == TranscriptSpeaker.self
-        ? TranscriptSpeaker.other
-        : TranscriptSpeaker.self;
-    ref
-        .read(qsoCaptureProvider.notifier)
-        .updateTranscriptSpeaker(widget.index, next);
+    final next = switch (widget.segment.speaker) {
+      TranscriptSpeaker.unknown => TranscriptSpeaker.self,
+      TranscriptSpeaker.self => TranscriptSpeaker.other,
+      TranscriptSpeaker.other => TranscriptSpeaker.self,
+    };
+    widget.onSpeakerChanged?.call(next);
   }
 
   Future<void> _togglePlayback() async {
@@ -5489,7 +5538,11 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
       _playbackError = null;
     });
     try {
-      await service.play(audioPath);
+      await service.play(
+        audioPath,
+        startOffset: widget.segment.startOffset,
+        endOffset: widget.segment.endOffset,
+      );
       if (mounted) {
         setState(() => _isPlaying = false);
       }
@@ -5964,6 +6017,56 @@ class _RetainedDataCard extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _RetainedTranscriptCard extends ConsumerWidget {
+  const _RetainedTranscriptCard({
+    required this.title,
+    required this.segments,
+    required this.otherCallsign,
+    required this.deleteLabel,
+    this.onDelete,
+  });
+
+  final String title;
+  final List<TranscriptSegment> segments;
+  final String otherCallsign;
+  final String deleteLabel;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ownCallsign = ref.watch(callsignProvider);
+    return Card(
+      child: ExpansionTile(
+        key: const ValueKey('retained-transcript-expansion'),
+        initiallyExpanded: false,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+            ),
+            if (onDelete != null)
+              IconButton(
+                tooltip: deleteLabel,
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline),
+              ),
+          ],
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+        children: [
+          for (var index = 0; index < segments.length; index += 1)
+            _TranscriptBubble(
+              key: ValueKey('retained_${segments[index].id ?? index}'),
+              segment: segments[index],
+              ownCallsign: ownCallsign,
+              otherCallsign: otherCallsign,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -6629,9 +6732,25 @@ String _transcriptSpeakerLabel(
 ) {
   final l10n = context.l10n;
   return switch (speaker) {
+    TranscriptSpeaker.unknown => l10n.unknownStation,
     TranscriptSpeaker.other => l10n.otherStation,
     TranscriptSpeaker.self => l10n.myStation,
   };
+}
+
+String _transcriptSpeakerDisplayLabel(
+  BuildContext context,
+  TranscriptSpeaker speaker, {
+  required String ownCallsign,
+  required String otherCallsign,
+}) {
+  final label = _transcriptSpeakerLabel(context, speaker);
+  final callsign = switch (speaker) {
+    TranscriptSpeaker.unknown => '',
+    TranscriptSpeaker.other => otherCallsign.trim().toUpperCase(),
+    TranscriptSpeaker.self => ownCallsign.trim().toUpperCase(),
+  };
+  return callsign.isEmpty ? label : '$label · $callsign';
 }
 
 String _formatSpeechDuration(Duration? duration) {
@@ -6639,6 +6758,17 @@ String _formatSpeechDuration(Duration? duration) {
     return '--"';
   }
   return '${(duration.inMilliseconds / 1000).toStringAsFixed(1)}"';
+}
+
+String _formatSpeechTimeline(TranscriptSegment segment) {
+  final startOffset = segment.startOffset;
+  final endOffset = segment.endOffset;
+  if (startOffset == null || endOffset == null) {
+    return _formatSpeechDuration(segment.duration);
+  }
+  final startSeconds = (startOffset.inMilliseconds / 1000).toStringAsFixed(1);
+  final endSeconds = (endOffset.inMilliseconds / 1000).toStringAsFixed(1);
+  return '$startSeconds–${endSeconds}s';
 }
 
 Future<bool> _validateImportFormat(

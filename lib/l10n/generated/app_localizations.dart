@@ -914,6 +914,12 @@ abstract class AppLocalizations {
   /// **'My station'**
   String get myStation;
 
+  /// No description provided for @unknownStation.
+  ///
+  /// In en, this message translates to:
+  /// **'Needs confirmation'**
+  String get unknownStation;
+
   /// No description provided for @unrecognizedSpeech.
   ///
   /// In en, this message translates to:

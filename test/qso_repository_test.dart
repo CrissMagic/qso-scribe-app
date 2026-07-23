@@ -1,11 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:qso_scribe_app/src/data/app_database.dart';
 import 'package:qso_scribe_app/src/data/logbook_upload_repository.dart';
 import 'package:qso_scribe_app/src/data/qso_repository.dart';
 import 'package:qso_scribe_app/src/domain/app_models.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
+  setUpAll(() {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  });
+
   test('editing a saved QSO updates in place and marks QRZ stale', () async {
     final database = _QsoDatabase();
     final qsoRepository = QsoRepository(AppDatabase(database: database));
@@ -104,6 +112,28 @@ void main() {
     expect(reloaded.band.sourceText, 'twenty meters');
   });
 
+  test('legacy review state follows the persisted QSO status', () async {
+    final database = _QsoDatabase();
+    final repository = QsoRepository(AppDatabase(database: database));
+    database.qsoRow['callsign_confidence'] = 0.6;
+    database.qsoRow['field_metadata'] = null;
+
+    for (final status in const [
+      LogStatus.confirmed,
+      LogStatus.exported,
+      LogStatus.draft,
+      LogStatus.needsReview,
+    ]) {
+      database.qsoRow['status'] = status.name;
+      final qso = await repository.findQso('qso-1');
+      final reviewed =
+          status == LogStatus.confirmed || status == LogStatus.exported;
+
+      expect(qso!.callsign.reviewed, reviewed, reason: status.name);
+      expect(qso.hasUnreviewedFields, !reviewed, reason: status.name);
+    }
+  });
+
   test('confirmed QSO rejects unresolved low-confidence fields', () async {
     final database = _QsoDatabase();
     final repository = QsoRepository(AppDatabase(database: database));
@@ -125,7 +155,181 @@ void main() {
       ),
     );
   });
+
+  test(
+    'transcript timeline survives repository round trip and audio deletion',
+    () async {
+      await _withRealRepository((repository) async {
+        final id = await repository.saveQso(_draftWithTranscriptTimeline());
+
+        var reloaded = await repository.findQso(id);
+        expect(reloaded!.transcriptSegments, hasLength(2));
+        expect(
+          reloaded.transcriptSegments.first.speaker,
+          TranscriptSpeaker.other,
+        );
+        expect(reloaded.transcriptSegments.first.startOffset, Duration.zero);
+        expect(
+          reloaded.transcriptSegments.first.endOffset,
+          const Duration(seconds: 1),
+        );
+        expect(
+          reloaded.transcriptSegments.last.startOffset,
+          const Duration(seconds: 1),
+        );
+        expect(
+          reloaded.transcriptSegments.last.endOffset,
+          const Duration(milliseconds: 2500),
+        );
+        expect(
+          reloaded.transcriptSegments.map((segment) => segment.audioPath),
+          everyElement('/app/audio/qso.wav'),
+        );
+
+        await repository.clearAudioPath(id);
+        reloaded = await repository.findQso(id);
+        expect(reloaded!.audioPath, isNull);
+        expect(reloaded.transcriptSegments, hasLength(2));
+        expect(
+          reloaded.transcriptSegments.map((segment) => segment.audioPath),
+          everyElement(isNull),
+        );
+        expect(
+          reloaded.transcriptSegments.last.endOffset,
+          const Duration(milliseconds: 2500),
+        );
+      });
+    },
+  );
+
+  test(
+    'deleting and restoring raw transcript also deletes and restores segments',
+    () async {
+      await _withRealRepository((repository) async {
+        final original = _draftWithTranscriptTimeline();
+        final id = await repository.saveQso(original);
+
+        await repository.setRawTranscript(id, null);
+        var reloaded = await repository.findQso(id);
+        expect(reloaded!.rawTranscript, isNull);
+        expect(reloaded.transcriptSegments, isEmpty);
+        expect(reloaded.audioPath, '/app/audio/qso.wav');
+
+        await repository.setRawTranscript(
+          id,
+          original.rawTranscript,
+          transcriptSegments: original.transcriptSegments,
+        );
+        reloaded = await repository.findQso(id);
+        expect(reloaded!.rawTranscript, original.rawTranscript);
+        expect(reloaded.transcriptSegments, hasLength(2));
+        expect(reloaded.transcriptSegments.first.text, 'K1ABC five nine');
+      });
+    },
+  );
+
+  test('clear all raw transcripts removes segments without raw text', () async {
+    await _withRealRepository((repository) async {
+      final id = await repository.saveQso(
+        _draftWithTranscriptTimeline().copyWith(rawTranscript: ''),
+      );
+
+      expect(await repository.countRawTranscripts(), 1);
+
+      await repository.clearAllRawTranscripts();
+
+      final reloaded = await repository.findQso(id);
+      expect(reloaded!.transcriptSegments, isEmpty);
+      expect(await repository.countRawTranscripts(), 0);
+    });
+  });
+
+  test(
+    'incomplete transcript timeline is rejected without replacing data',
+    () async {
+      await _withRealRepository((repository) async {
+        final original = _draftWithTranscriptTimeline();
+        final id = await repository.saveQso(original);
+        final incomplete = original.copyWith(
+          id: id,
+          transcriptSegments: const [
+            TranscriptSegment(
+              speaker: TranscriptSpeaker.other,
+              text: 'incomplete',
+              isFinal: true,
+              startOffset: Duration(seconds: 1),
+            ),
+          ],
+        );
+
+        await expectLater(
+          repository.saveQso(incomplete),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'incomplete_transcript_segment_timeline',
+            ),
+          ),
+        );
+
+        final reloaded = await repository.findQso(id);
+        expect(reloaded!.transcriptSegments, hasLength(2));
+        expect(
+          reloaded.transcriptSegments.last.endOffset,
+          const Duration(milliseconds: 2500),
+        );
+      });
+    },
+  );
 }
+
+Future<void> _withRealRepository(
+  Future<void> Function(QsoRepository repository) body,
+) async {
+  final tempDir = await Directory.systemTemp.createTemp(
+    'qso_scribe_transcript_repository_',
+  );
+  final databasePath = p.join(tempDir.path, AppDatabase.databaseName);
+  Database? opened;
+  try {
+    final appDatabase = AppDatabase(databasePath: databasePath);
+    opened = await appDatabase.instance;
+    await body(QsoRepository(appDatabase));
+  } finally {
+    await opened?.close();
+    await tempDir.delete(recursive: true);
+  }
+}
+
+QsoDraft _draftWithTranscriptTimeline() => QsoDraft(
+  callsign: const QsoField(value: 'K1ABC'),
+  dateTime: QsoField(value: DateTime(2026, 7, 22, 10)),
+  band: const QsoField(value: '20m'),
+  frequency: const QsoField(value: '14.250'),
+  mode: const QsoField(value: 'SSB'),
+  sentRst: const QsoField(value: '59'),
+  receivedRst: const QsoField(value: '57'),
+  status: LogStatus.needsReview,
+  audioPath: '/app/audio/qso.wav',
+  rawTranscript: 'K1ABC five nine\nBA1SELF roger',
+  transcriptSegments: const [
+    TranscriptSegment(
+      speaker: TranscriptSpeaker.other,
+      text: 'K1ABC five nine',
+      isFinal: true,
+      startOffset: Duration.zero,
+      endOffset: Duration(seconds: 1),
+    ),
+    TranscriptSegment(
+      speaker: TranscriptSpeaker.self,
+      text: 'BA1SELF roger',
+      isFinal: true,
+      startOffset: Duration(seconds: 1),
+      endOffset: Duration(milliseconds: 2500),
+    ),
+  ],
+);
 
 class _QsoDatabase implements Database, Transaction {
   _QsoDatabase()
@@ -233,6 +437,13 @@ class _QsoDatabase implements Database, Transaction {
     }
     return 1;
   }
+
+  @override
+  Future<int> delete(
+    String table, {
+    String? where,
+    List<Object?>? whereArgs,
+  }) async => 0;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

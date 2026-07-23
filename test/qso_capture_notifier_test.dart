@@ -34,6 +34,320 @@ void main() {
     ]);
   });
 
+  test('实时转写用我方资料判断气泡，QSO 呼号只接受对方', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    final structuredInputs = <String>[];
+    final container = _captureContainer(
+      audio,
+      streaming,
+      ownCallsign: 'F/BA1SELF/P',
+      ownQth: 'Beijing',
+      realtimeDraftFactory: (rawText, dateTime) async {
+        structuredInputs.add(rawText);
+        return _structuredDraft(
+          callsign: structuredInputs.length == 1 ? 'BA1SELF' : 'K1ABC',
+          dateTime: dateTime,
+          rawTranscript: rawText,
+        );
+      },
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    final notifier = container.read(qsoCaptureProvider.notifier);
+    await notifier.startRecordingQso(mode: TranscriptionMode.streaming);
+
+    streaming.addFinal('K1ABC this is BA1SELF');
+    await _waitUntil(() => structuredInputs.length == 1);
+    var capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.single.speaker, TranscriptSpeaker.self);
+    expect(capture.currentDraft.callsign.value, isEmpty);
+
+    streaming.addFinal('BA1SELF this is K1ABC');
+    await _waitUntil(() => structuredInputs.length == 2);
+    capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.map((segment) => segment.speaker), [
+      TranscriptSpeaker.self,
+      TranscriptSpeaker.other,
+    ]);
+    expect(capture.currentDraft.callsign.value, 'K1ABC');
+
+    streaming.addFinal('five nine');
+    await _waitUntil(() => structuredInputs.length == 3);
+    capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.last.speaker, TranscriptSpeaker.unknown);
+    expect(
+      structuredInputs.last,
+      '[我方资料] callsign=F/BA1SELF/P; qth=Beijing\n'
+      '[我方] K1ABC this is BA1SELF\n'
+      '[对方] BA1SELF this is K1ABC\n'
+      '[待确认] five nine',
+    );
+
+    notifier.updateTranscriptSpeaker(2, TranscriptSpeaker.self);
+    await _waitUntil(() => structuredInputs.length == 4);
+    capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.last.speaker, TranscriptSpeaker.self);
+    expect(
+      structuredInputs.last,
+      '[我方资料] callsign=F/BA1SELF/P; qth=Beijing\n'
+      '[我方] K1ABC this is BA1SELF\n'
+      '[对方] BA1SELF this is K1ABC\n'
+      '[我方] five nine',
+    );
+  });
+
+  test('实时最终分段按已发送 PCM 字节生成连续近似时间轴', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    final container = _captureContainer(
+      audio,
+      streaming,
+      realtimeDraftFactory: (rawText, dateTime) async => _structuredDraft(
+        callsign: 'K1ABC',
+        dateTime: dateTime,
+        rawTranscript: rawText,
+      ),
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    final notifier = container.read(qsoCaptureProvider.notifier);
+    await notifier.startRecordingQso(mode: TranscriptionMode.streaming);
+    streaming.addFinal('first segment');
+    await _waitUntil(
+      () => container
+          .read(qsoCaptureProvider)
+          .value!
+          .transcriptSegments
+          .isNotEmpty,
+    );
+    audio.addFrame(List<int>.filled(32000, 0));
+    streaming.addFinal('second segment');
+    await _waitUntil(
+      () =>
+          container.read(qsoCaptureProvider).value!.transcriptSegments.length ==
+          2,
+    );
+
+    final recorder = container.read(recordingSessionProvider.notifier);
+    final startedAt = container.read(recordingSessionProvider).startedAt;
+    final audioPath = await recorder.stop();
+    final draft = await notifier.stopQsoStreaming(
+      audioPath: audioPath,
+      startedAt: startedAt,
+    );
+
+    expect(draft.transcriptSegments, hasLength(2));
+    expect(draft.transcriptSegments.first.startOffset, Duration.zero);
+    expect(
+      draft.transcriptSegments.first.endOffset,
+      const Duration(microseconds: 125),
+    );
+    expect(
+      draft.transcriptSegments.last.startOffset,
+      const Duration(microseconds: 125),
+    );
+    expect(
+      draft.transcriptSegments.last.endOffset,
+      const Duration(microseconds: 1000125),
+    );
+    expect(
+      draft.transcriptSegments.map((segment) => segment.audioPath),
+      everyElement(_FakeAudioCaptureService.outputPath),
+    );
+  });
+
+  test('中文身份表达按规范化呼号区分我方和对方', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    var callCount = 0;
+    final container = _captureContainer(
+      audio,
+      streaming,
+      ownCallsign: 'BA1SELF',
+      realtimeDraftFactory: (rawText, dateTime) async {
+        callCount += 1;
+        return _structuredDraft(
+          callsign: callCount == 1 ? 'BA1SELF' : 'K1ABC',
+          dateTime: dateTime,
+          rawTranscript: rawText,
+        );
+      },
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    await container
+        .read(qsoCaptureProvider.notifier)
+        .startRecordingQso(mode: TranscriptionMode.streaming);
+
+    streaming.addFinal('这里是 ba1 self');
+    await _waitUntil(() => callCount == 1);
+    streaming.addFinal('我是 k1 abc');
+    await _waitUntil(() => callCount == 2);
+
+    final segments = (await container.read(
+      qsoCaptureProvider.future,
+    )).transcriptSegments;
+    expect(segments.map((segment) => segment.speaker), [
+      TranscriptSpeaker.self,
+      TranscriptSpeaker.other,
+    ]);
+  });
+
+  test('我方气泡或我方资料中的姓名和 QTH 不进入 QSO', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    var callCount = 0;
+    final container = _captureContainer(
+      audio,
+      streaming,
+      ownCallsign: 'BA1SELF',
+      ownQth: 'Beijing',
+      realtimeDraftFactory: (rawText, dateTime) async {
+        callCount += 1;
+        return _structuredDraft(
+          callsign: callCount == 1 ? 'BA1SELF' : 'K1ABC',
+          dateTime: dateTime,
+          rawTranscript: rawText,
+          name: callCount == 1 ? 'Alice' : null,
+          nameSource: callCount == 1 ? '我叫 Alice' : null,
+          qth: 'Beijing',
+          qthSource: switch (callCount) {
+            1 => 'QTH Beijing',
+            2 => '[我方资料] qth=Beijing',
+            _ => 'qth=Beijing',
+          },
+        );
+      },
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    await container
+        .read(qsoCaptureProvider.notifier)
+        .startRecordingQso(mode: TranscriptionMode.streaming);
+
+    streaming.addFinal('这里是 BA1SELF，我叫 Alice，QTH Beijing');
+    await _waitUntil(() => callCount == 1);
+    var draft = (await container.read(qsoCaptureProvider.future)).currentDraft;
+    expect(draft.name, isNull);
+    expect(draft.qth, isNull);
+
+    streaming.addFinal('K1ABC five nine');
+    await _waitUntil(() => callCount == 2);
+    draft = (await container.read(qsoCaptureProvider.future)).currentDraft;
+    expect(draft.qth, isNull);
+
+    streaming.addFinal('roger');
+    await _waitUntil(() => callCount == 3);
+    draft = (await container.read(qsoCaptureProvider.future)).currentDraft;
+    expect(draft.qth, isNull);
+  });
+
+  test('对方姓名和 QTH 保留，后续我方资料不会清空', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    var callCount = 0;
+    final container = _captureContainer(
+      audio,
+      streaming,
+      ownCallsign: 'BA1SELF',
+      ownQth: 'Beijing',
+      realtimeDraftFactory: (rawText, dateTime) async {
+        callCount += 1;
+        return _structuredDraft(
+          callsign: 'K1ABC',
+          dateTime: dateTime,
+          rawTranscript: rawText,
+          name: callCount == 1 ? 'Bob' : 'Alice',
+          nameSource: callCount == 1 ? '[对方] 我叫 Bob' : '[我方] 我叫 Alice',
+          qth: 'Beijing',
+          qthSource: callCount == 1 ? '[对方] QTH Beijing' : '[我方] QTH Beijing',
+          stationFieldConfidence: 0.92,
+        );
+      },
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    await container
+        .read(qsoCaptureProvider.notifier)
+        .startRecordingQso(mode: TranscriptionMode.streaming);
+    streaming.addFinal('BA1SELF，这里是 K1ABC，我叫 Bob，QTH Beijing');
+    await _waitUntil(() => callCount == 1);
+
+    var capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.single.speaker, TranscriptSpeaker.other);
+    expect(capture.currentDraft.name?.value, 'Bob');
+    expect(capture.currentDraft.name?.confidence, 0.92);
+    expect(capture.currentDraft.qth?.value, 'Beijing');
+    expect(capture.currentDraft.qth?.confidence, 0.92);
+
+    streaming.addFinal('这里是 BA1SELF，我叫 Alice，QTH Beijing');
+    await _waitUntil(() => callCount == 2);
+    capture = await container.read(qsoCaptureProvider.future);
+    expect(capture.transcriptSegments.last.speaker, TranscriptSpeaker.self);
+    expect(capture.currentDraft.name?.value, 'Bob');
+    expect(capture.currentDraft.qth?.value, 'Beijing');
+  });
+
+  test('待确认或缺少来源的姓名和 QTH 保留但强制复核', () async {
+    final events = <String>[];
+    final audio = _FakeAudioCaptureService(events);
+    final streaming = _FakeStreamingProvider(events);
+    var structured = false;
+    final container = _captureContainer(
+      audio,
+      streaming,
+      realtimeDraftFactory: (rawText, dateTime) async {
+        structured = true;
+        return _structuredDraft(
+          callsign: 'K1ABC',
+          dateTime: dateTime,
+          rawTranscript: rawText,
+          name: 'Charlie',
+          qth: 'Shanghai',
+          qthSource: 'Shanghai',
+          stationFieldConfidence: 0.91,
+          stationFieldsReviewed: true,
+        );
+      },
+    );
+    addTearDown(container.dispose);
+    addTearDown(audio.dispose);
+
+    await container.read(qsoCaptureProvider.future);
+    await container
+        .read(qsoCaptureProvider.notifier)
+        .startRecordingQso(mode: TranscriptionMode.streaming);
+    streaming.addFinal('operator Charlie in Shanghai');
+    await _waitUntil(() => structured);
+
+    final draft = (await container.read(
+      qsoCaptureProvider.future,
+    )).currentDraft;
+    expect(draft.name?.value, 'Charlie');
+    expect(draft.name?.confidence, 0.74);
+    expect(draft.name?.reviewed, isFalse);
+    expect(draft.qth?.value, 'Shanghai');
+    expect(draft.qth?.confidence, 0.74);
+    expect(draft.qth?.reviewed, isFalse);
+    expect(draft.hasUnreviewedFields, isTrue);
+  });
+
   test('final 转写在录音中实时更新当前 QSO 草稿', () async {
     final events = <String>[];
     final audio = _FakeAudioCaptureService(events);
@@ -62,10 +376,10 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     final capture = await container.read(qsoCaptureProvider.future);
-    expect(structuredInputs, ['[对方] K1ABC five nine']);
+    expect(structuredInputs, ['[待确认] K1ABC five nine']);
     expect(capture.currentDraft.callsign.value, 'K1ABC');
     expect(capture.currentDraft.callsign.confidence, 0.6);
-    expect(capture.currentDraft.rawTranscript, '[对方] K1ABC five nine');
+    expect(capture.currentDraft.rawTranscript, '[待确认] K1ABC five nine');
   });
 
   test('用户编辑过的实时字段不会被后续 AI patch 覆盖', () async {
@@ -180,7 +494,7 @@ void main() {
 
     streaming.addFinal('five nine');
     await Future<void>.delayed(Duration.zero);
-    expect(inputs, ['[对方] K1ABC']);
+    expect(inputs, ['[待确认] K1ABC']);
 
     firstResult.complete(
       _structuredDraft(
@@ -190,7 +504,7 @@ void main() {
       ),
     );
     await secondStarted.future;
-    expect(inputs, ['[对方] K1ABC', '[对方] K1ABC\n[对方] five nine']);
+    expect(inputs, ['[待确认] K1ABC', '[待确认] K1ABC\n[待确认] five nine']);
 
     secondResult.complete(
       _structuredDraft(
@@ -213,8 +527,11 @@ void main() {
     final container = _captureContainer(
       audio,
       streaming,
+      ownCallsign: 'BA1SELF',
       realtimeDraftFactory: (rawText, dateTime) {
-        structuringStarted.complete();
+        if (!structuringStarted.isCompleted) {
+          structuringStarted.complete();
+        }
         return structuringResult.future;
       },
     );
@@ -224,7 +541,7 @@ void main() {
     await container.read(qsoCaptureProvider.future);
     final notifier = container.read(qsoCaptureProvider.notifier);
     await notifier.startRecordingQso(mode: TranscriptionMode.streaming);
-    streaming.addFinal('K1ABC five nine');
+    streaming.addFinal('BA1SELF this is K1ABC');
     await structuringStarted.future;
 
     final recorder = container.read(recordingSessionProvider.notifier);
@@ -241,7 +558,7 @@ void main() {
       _structuredDraft(
         callsign: 'K1ABC',
         dateTime: startedAt,
-        rawTranscript: '[对方] K1ABC five nine',
+        rawTranscript: '[待确认] BA1SELF this is K1ABC',
       ),
     );
     final draft = await stopped;
@@ -250,6 +567,7 @@ void main() {
     expect(draft.dateTime.value, startedAt);
     expect(draft.audioPath, _FakeAudioCaptureService.outputPath);
     expect(draft.status, LogStatus.needsReview);
+    expect(draft.rawTranscript, '[对方] BA1SELF this is K1ABC');
     expect(
       (await container.read(qsoCaptureProvider.future)).isStructuring,
       isFalse,
@@ -301,6 +619,37 @@ void main() {
     expect(qsos.single.id, 'qso-1');
     expect(qsos.single.status, LogStatus.exported);
     expect(qsos.single.band.value, '40m');
+  });
+
+  test('清除原始转写后同步本次会话中的同一条 QSO', () async {
+    final repository = _InMemoryQsoRepository();
+    final original = _sessionDraft(id: 'qso-1', status: LogStatus.needsReview)
+        .copyWith(
+          rawTranscript: 'K1ABC five nine',
+          transcriptSegments: const [
+            TranscriptSegment(
+              speaker: TranscriptSpeaker.other,
+              text: 'K1ABC five nine',
+              isFinal: true,
+            ),
+          ],
+        );
+    await repository.saveQso(original);
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsProvider.overrideWith(_DefaultAppSettingsNotifier.new),
+        qsoRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(qsoLogProvider.future);
+    container.read(qsoSessionProvider.notifier).record(original);
+
+    await container.read(qsoLogProvider.notifier).clearRawTranscript('qso-1');
+
+    final sessionQso = container.read(qsoSessionProvider).single;
+    expect(sessionQso.rawTranscript, isNull);
+    expect(sessionQso.transcriptSegments, isEmpty);
   });
 
   test('新 QSO 只继承最近 confirmed/exported 的指定字段', () async {
@@ -392,6 +741,14 @@ void main() {
         status: LogStatus.needsReview,
         audioPath: audioPath,
         rawTranscript: 'K2XYZ five nine',
+        transcriptSegments: [
+          TranscriptSegment(
+            speaker: TranscriptSpeaker.unknown,
+            text: 'K2XYZ five nine',
+            isFinal: true,
+            audioPath: audioPath,
+          ),
+        ],
       ),
     );
     addTearDown(container.dispose);
@@ -433,6 +790,8 @@ void main() {
     expect(draft.power?.value, '100W');
     expect(draft.audioPath, _FakeAudioCaptureService.outputPath);
     expect(draft.rawTranscript, 'K2XYZ five nine');
+    expect(draft.transcriptSegments, hasLength(1));
+    expect(draft.transcriptSegments.single.speaker, TranscriptSpeaker.unknown);
   });
 
   test('实时连接失败时不启动录音', () async {
@@ -569,6 +928,8 @@ ProviderContainer _captureContainer(
   _FakeAudioCaptureService audio,
   _FakeStreamingProvider streaming, {
   FailureHandling failureHandling = FailureHandling.alert,
+  String ownCallsign = '',
+  String ownQth = '',
   Future<QsoDraft> Function(String rawText, DateTime? dateTime)?
   realtimeDraftFactory,
   Future<QsoDraft> Function(String audioPath, DateTime? startedAt)?
@@ -578,6 +939,8 @@ ProviderContainer _captureContainer(
     overrides: [
       audioCaptureServiceProvider.overrideWithValue(audio),
       failureHandlingProvider.overrideWithValue(failureHandling),
+      callsignProvider.overrideWithValue(ownCallsign),
+      qthProvider.overrideWithValue(ownQth),
       qsoCaptureProvider.overrideWith(
         () => QsoCaptureNotifier(
           streamingProviderResolver: () async => streaming,
@@ -610,6 +973,17 @@ class _InMemoryQsoRepository extends QsoRepository {
   @override
   Future<List<QsoDraft>> listQsos([QsoQuery query = const QsoQuery()]) async =>
       _qsos.values.toList();
+
+  @override
+  Future<void> clearRawTranscript(String id) async {
+    final qso = _qsos[id];
+    if (qso != null) {
+      _qsos[id] = qso.copyWith(
+        clearRawTranscript: true,
+        transcriptSegments: const [],
+      );
+    }
+  }
 }
 
 class _FakeAudioCaptureService implements AudioCaptureService {
@@ -640,6 +1014,17 @@ class _FakeAudioCaptureService implements AudioCaptureService {
   Future<String?> stop() async {
     events.add('audio.stop');
     return outputPath;
+  }
+
+  void addFrame(List<int> bytes) {
+    _frames.add(
+      AudioFrame(
+        bytes: bytes,
+        sampleRate: 16000,
+        channels: 1,
+        timestamp: DateTime(2026, 7, 17),
+      ),
+    );
   }
 
   @override
@@ -711,6 +1096,12 @@ QsoDraft _structuredDraft({
   required String rawTranscript,
   String band = '20m',
   String? rig,
+  String? name,
+  String? nameSource,
+  String? qth,
+  String? qthSource,
+  double stationFieldConfidence = 0.8,
+  bool stationFieldsReviewed = false,
 }) {
   return QsoDraft(
     callsign: QsoField(value: callsign, confidence: 0.6, sourceText: callsign),
@@ -720,6 +1111,22 @@ QsoDraft _structuredDraft({
     mode: const QsoField(value: 'SSB', confidence: 0.8),
     sentRst: const QsoField(value: '59', confidence: 0.8),
     receivedRst: const QsoField(value: '57', confidence: 0.8),
+    name: name == null
+        ? null
+        : QsoField(
+            value: name,
+            confidence: stationFieldConfidence,
+            reviewed: stationFieldsReviewed,
+            sourceText: nameSource,
+          ),
+    qth: qth == null
+        ? null
+        : QsoField(
+            value: qth,
+            confidence: stationFieldConfidence,
+            reviewed: stationFieldsReviewed,
+            sourceText: qthSource,
+          ),
     rig: rig == null ? null : QsoField(value: rig, confidence: 0.8),
     status: LogStatus.needsReview,
     rawTranscript: rawTranscript,

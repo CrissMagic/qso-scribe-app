@@ -136,6 +136,7 @@
   "audioPlaybackFailed": "Audio playback failed",
   "otherStation": "Other station",
   "myStation": "My station",
+  "unknownStation": "Needs confirmation",
   "unrecognizedSpeech": "No transcript recognized",
   "switchToMyStation": "Mark as my station",
   "switchToOtherStation": "Mark as other station",

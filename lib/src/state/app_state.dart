@@ -375,6 +375,7 @@ final qsoProcessingServiceProvider = Provider<QsoProcessingService>(
     modelRepository: ref.watch(modelRepositoryProvider),
     heuristicStructuringService: ref.watch(qsoStructuringServiceProvider),
     tokenUsageRepository: ref.watch(tokenUsageRepositoryProvider),
+    loadSettings: () => ref.read(appSettingsProvider.future),
   ),
 );
 
@@ -714,6 +715,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   final BytesBuilder _segmentAudio = BytesBuilder(copy: false);
   int _segmentSampleRate = defaultPcmSampleRate;
   int _segmentChannels = defaultPcmChannels;
+  Duration _segmentTimelineOffset = Duration.zero;
   int _segmentSeq = 0;
   String? _partial;
   String? _streamingFailure;
@@ -734,6 +736,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     _realtimeStructuringFailure = null;
     _realtimeStructuringRequested = false;
     _segmentAudio.takeBytes();
+    _segmentTimelineOffset = Duration.zero;
     _segmentSeq = 0;
     state = AsyncData(QsoCaptureState(currentDraft: _emptyDraft()));
 
@@ -950,10 +953,18 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   }
 
   Future<void> _structureRealtimeSnapshot() async {
-    final rawText = formatTranscriptSegmentsForStructuring(_finalSegments);
-    if (rawText.trim().isEmpty) {
+    if (_inferUnknownTranscriptSpeakers()) {
+      _publishTranscriptSegments(updateDraftTranscript: true);
+    }
+    var transcriptText = formatTranscriptSegmentsForStructuring(_finalSegments);
+    if (transcriptText.trim().isEmpty) {
       return;
     }
+    final structuringInput = buildQsoStructuringInput(
+      transcriptText,
+      ownCallsign: ref.read(callsignProvider),
+      ownQth: ref.read(qthProvider),
+    );
     final current = await future;
     final dateTime = current.currentDraft.dateTime.value;
     final factory = _realtimeDraftFactory;
@@ -962,8 +973,8 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       patch = factory == null
           ? await ref
                 .read(qsoIntakeServiceProvider)
-                .reviewDraftFromText(rawText, dateTime: dateTime)
-          : await factory(rawText, dateTime);
+                .reviewDraftFromText(structuringInput, dateTime: dateTime)
+          : await factory(structuringInput, dateTime);
     } catch (error) {
       final message = error.toString();
       _realtimeStructuringFailure = message;
@@ -972,7 +983,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
             ref.read(failureHandlingProvider) == FailureHandling.alert;
         return latest.copyWith(
           currentDraft: latest.currentDraft.copyWith(
-            rawTranscript: rawText,
+            rawTranscript: transcriptText,
             status: LogStatus.needsReview,
             errorMessage: message,
           ),
@@ -983,18 +994,36 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       return;
     }
 
+    patch = _removeOwnCallsign(patch);
+    _inferUnknownTranscriptSpeakers(otherCallsign: patch.callsign.value);
+    final counterpartyFields = _sanitizeCounterpartyFields(patch);
+    patch = counterpartyFields.patch;
+    transcriptText = formatTranscriptSegmentsForStructuring(_finalSegments);
     _realtimeStructuringFailure = patch.errorMessage;
     _updateCapture((latest) {
+      final currentName = latest.currentDraft.name;
+      final currentQth = latest.currentDraft.qth;
       final draft = _mergeRealtimeDraft(
         latest.currentDraft,
         patch,
-        rawText: rawText,
+        rawText: transcriptText,
+        clearName:
+            counterpartyFields.clearName &&
+            currentName != null &&
+            _counterpartyFieldSource(currentName, isQth: false) ==
+                _CounterpartyFieldSource.self,
+        clearQth:
+            counterpartyFields.clearQth &&
+            currentQth != null &&
+            _counterpartyFieldSource(currentQth, isQth: true) ==
+                _CounterpartyFieldSource.self,
       );
       final showWarning =
           patch.errorMessage != null &&
           ref.read(failureHandlingProvider) == FailureHandling.alert;
       return latest.copyWith(
         currentDraft: draft,
+        transcriptSegments: _visibleTranscriptSegments(),
         warningMessage: showWarning ? patch.errorMessage : null,
         clearWarning: !showWarning,
       );
@@ -1031,12 +1060,26 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     _publishTranscriptSegments();
   }
 
-  // ponytail: ASR final events are v1's approximate audio boundaries;
-  // persisted bubble timelines can replace this when history replay matters.
+  // ponytail: Qwen does not return word timestamps, so the final event boundary
+  // is approximated from PCM bytes sent since the previous final event.
   TranscriptSegment _finalizeTranscriptSegment(TranscriptSegment segment) {
     final audio = _takeSegmentAudio();
     final id = 'stream_${_segmentSeq++}';
-    return segment.copyWith(id: id, duration: audio.duration);
+    final duration = audio.duration;
+    final startOffset = duration == null ? null : _segmentTimelineOffset;
+    final endOffset = duration == null
+        ? null
+        : _segmentTimelineOffset + duration;
+    if (endOffset != null) {
+      _segmentTimelineOffset = endOffset;
+    }
+    return segment.copyWith(
+      id: id,
+      speaker: TranscriptSpeaker.unknown,
+      duration: duration,
+      startOffset: startOffset,
+      endOffset: endOffset,
+    );
   }
 
   _CapturedSegmentAudio _takeSegmentAudio() {
@@ -1191,15 +1234,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   }
 
   void _publishTranscriptSegments({bool updateDraftTranscript = false}) {
-    final visibleSegments = [
-      ..._finalSegments,
-      if (_partial != null && _partial!.trim().isNotEmpty)
-        TranscriptSegment(
-          speaker: TranscriptSpeaker.other,
-          text: _partial!,
-          isFinal: false,
-        ),
-    ];
+    final visibleSegments = _visibleTranscriptSegments();
     _updateCapture((state) {
       if (!updateDraftTranscript) {
         return state.copyWith(transcriptSegments: visibleSegments);
@@ -1213,6 +1248,148 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         transcriptSegments: visibleSegments,
       );
     });
+  }
+
+  List<TranscriptSegment> _visibleTranscriptSegments() => [
+    ..._finalSegments,
+    if (_partial != null && _partial!.trim().isNotEmpty)
+      TranscriptSegment(
+        speaker: TranscriptSpeaker.unknown,
+        text: _partial!,
+        isFinal: false,
+      ),
+  ];
+
+  bool _inferUnknownTranscriptSpeakers({String? otherCallsign}) {
+    final ownCallsign = ref.read(callsignProvider);
+    final currentOtherCallsign = state.maybeWhen(
+      data: (capture) => capture.currentDraft.callsign.value,
+      orElse: () => '',
+    );
+    final resolvedOtherCallsign = otherCallsign?.trim().isNotEmpty == true
+        ? otherCallsign!
+        : currentOtherCallsign;
+    var changed = false;
+    _finalSegments = [
+      for (final segment in _finalSegments)
+        if (segment.speaker != TranscriptSpeaker.unknown)
+          segment
+        else
+          (() {
+            final speaker = _inferTranscriptSpeaker(
+              segment.text,
+              ownCallsign: ownCallsign,
+              otherCallsign: resolvedOtherCallsign,
+            );
+            changed |= speaker != TranscriptSpeaker.unknown;
+            return speaker == TranscriptSpeaker.unknown
+                ? segment
+                : segment.copyWith(speaker: speaker);
+          })(),
+    ];
+    return changed;
+  }
+
+  QsoDraft _removeOwnCallsign(QsoDraft patch) {
+    final ownCallsign = ref.read(callsignProvider);
+    if (!callsignsMatch(patch.callsign.value, ownCallsign)) {
+      return patch;
+    }
+    return patch.copyWith(callsign: const QsoField(value: '', confidence: 0.2));
+  }
+
+  ({QsoDraft patch, bool clearName, bool clearQth}) _sanitizeCounterpartyFields(
+    QsoDraft patch,
+  ) {
+    final name = _sanitizeCounterpartyField(patch.name);
+    final qth = _sanitizeCounterpartyField(patch.qth, isQth: true);
+    return (
+      patch: patch.copyWith(
+        name: name.field,
+        qth: qth.field,
+        clearName: name.discard,
+        clearQth: qth.discard,
+      ),
+      clearName: name.discard,
+      clearQth: qth.discard,
+    );
+  }
+
+  ({QsoField<String>? field, bool discard}) _sanitizeCounterpartyField(
+    QsoField<String>? field, {
+    bool isQth = false,
+  }) {
+    if (field == null || field.value.trim().isEmpty) {
+      return (field: field, discard: false);
+    }
+    return switch (_counterpartyFieldSource(field, isQth: isQth)) {
+      _CounterpartyFieldSource.self => (field: null, discard: true),
+      _CounterpartyFieldSource.other => (field: field, discard: false),
+      _CounterpartyFieldSource.uncertain => (
+        field: field.copyWith(
+          confidence: field.confidence < 0.75 ? field.confidence : 0.74,
+          userEdited: false,
+          reviewed: false,
+        ),
+        discard: false,
+      ),
+    };
+  }
+
+  _CounterpartyFieldSource _counterpartyFieldSource(
+    QsoField<String> field, {
+    required bool isQth,
+  }) {
+    final sourceText = field.sourceText?.trim();
+    if (sourceText == null || sourceText.isEmpty) {
+      return _CounterpartyFieldSource.uncertain;
+    }
+
+    final explicitSources = <_CounterpartyFieldSource>{
+      if (sourceText.contains('[我方资料]') || sourceText.contains('[我方]'))
+        _CounterpartyFieldSource.self,
+      if (sourceText.contains('[对方]')) _CounterpartyFieldSource.other,
+      if (sourceText.contains('[待确认]')) _CounterpartyFieldSource.uncertain,
+    };
+    if (explicitSources.isNotEmpty) {
+      return explicitSources.length == 1
+          ? explicitSources.single
+          : _CounterpartyFieldSource.uncertain;
+    }
+
+    final matchedSpeakers = <TranscriptSpeaker>{
+      for (final segment in _finalSegments)
+        if (segment.hasText && _sourceMatchesSegment(sourceText, segment.text))
+          segment.speaker,
+    };
+    if (matchedSpeakers.isEmpty &&
+        isQth &&
+        _matchesOwnQthContext(field.value, sourceText)) {
+      matchedSpeakers.add(TranscriptSpeaker.self);
+    }
+    if (matchedSpeakers.length != 1 ||
+        matchedSpeakers.contains(TranscriptSpeaker.unknown)) {
+      return _CounterpartyFieldSource.uncertain;
+    }
+    return matchedSpeakers.single == TranscriptSpeaker.self
+        ? _CounterpartyFieldSource.self
+        : _CounterpartyFieldSource.other;
+  }
+
+  bool _matchesOwnQthContext(String value, String sourceText) {
+    final ownQth = ref.read(qthProvider).trim();
+    if (ownQth.isEmpty || value.trim().toLowerCase() != ownQth.toLowerCase()) {
+      return false;
+    }
+    return RegExp(r'\bqth\s*=', caseSensitive: false).hasMatch(sourceText);
+  }
+
+  bool _sourceMatchesSegment(String sourceText, String segmentText) {
+    final source = _normalizeSourceEvidence(sourceText);
+    final segment = _normalizeSourceEvidence(segmentText);
+    return source.isNotEmpty &&
+        segment.isNotEmpty &&
+        (segment.contains(source) || source.contains(segment));
   }
 
   Future<void> _stopStreaming() async {
@@ -1239,7 +1416,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         ..._finalSegments,
         _finalizeTranscriptSegment(
           TranscriptSegment(
-            speaker: TranscriptSpeaker.other,
+            speaker: TranscriptSpeaker.unknown,
             text: _partial!.trim(),
             isFinal: true,
           ),
@@ -1259,10 +1436,22 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       await _waitForRealtimeStructuring();
     }
     final latest = await future;
+    final latestRawText = hasTranscript
+        ? formatTranscriptSegmentsForStructuring(_finalSegments)
+        : null;
+    final persistedSegments = [
+      for (final segment in _finalSegments)
+        if (segment.isFinal)
+          segment.copyWith(
+            audioPath: audioPath,
+            clearAudioPath: audioPath == null,
+          ),
+    ];
     var draft = latest.currentDraft.copyWith(
       audioPath: audioPath,
-      rawTranscript: hasTranscript ? rawText : null,
+      rawTranscript: latestRawText,
       clearRawTranscript: !hasTranscript,
+      transcriptSegments: persistedSegments,
       dateTime: latest.currentDraft.dateTime.copyWith(
         value: startedAt ?? latest.currentDraft.dateTime.value,
       ),
@@ -1340,6 +1529,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
               originalAudioDeleted: recognized.originalAudioDeleted,
               rawTranscript: recognized.rawTranscript,
               clearRawTranscript: recognized.rawTranscript == null,
+              transcriptSegments: recognized.transcriptSegments,
               status: recognized.status,
               errorMessage: recognized.errorMessage,
               clearErrorMessage: recognized.errorMessage == null,
@@ -1347,14 +1537,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
         state = AsyncData(
           QsoCaptureState(
             currentDraft: draft,
-            transcriptSegments: [
-              if (draft.rawTranscript?.isNotEmpty ?? false)
-                TranscriptSegment(
-                  speaker: TranscriptSpeaker.other,
-                  text: draft.rawTranscript!,
-                  isFinal: true,
-                ),
-            ],
+            transcriptSegments: draft.transcriptSegments,
           ),
         );
         return draft;
@@ -1411,6 +1594,39 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
   }
 }
 
+TranscriptSpeaker _inferTranscriptSpeaker(
+  String text, {
+  required String ownCallsign,
+  required String otherCallsign,
+}) {
+  final claimsOwn = _claimsIdentity(text, ownCallsign);
+  final claimsOther = _claimsIdentity(text, otherCallsign);
+  if (claimsOwn == claimsOther) {
+    return TranscriptSpeaker.unknown;
+  }
+  return claimsOwn ? TranscriptSpeaker.self : TranscriptSpeaker.other;
+}
+
+bool _claimsIdentity(String text, String callsign) {
+  final identities = callsignIdentities(callsign);
+  if (identities.isEmpty) {
+    return false;
+  }
+  final compactText = text.toUpperCase().replaceAll(
+    RegExp(r'[^A-Z0-9/\u4e00-\u9fff]'),
+    '',
+  );
+  return ['THISIS', 'IAM', 'HEREIS', 'FROM', '这里是', '我是', '本台是'].any(
+    (marker) =>
+        identities.any((identity) => compactText.contains('$marker$identity')),
+  );
+}
+
+String _normalizeSourceEvidence(String value) =>
+    value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+enum _CounterpartyFieldSource { self, other, uncertain }
+
 final qsoCaptureProvider =
     AsyncNotifierProvider<QsoCaptureNotifier, QsoCaptureState>(
       QsoCaptureNotifier.new,
@@ -1420,12 +1636,25 @@ QsoDraft _mergeRealtimeDraft(
   QsoDraft current,
   QsoDraft patch, {
   required String rawText,
+  bool clearName = false,
+  bool clearQth = false,
 }) {
-  return _mergeStructuredFields(current, patch).copyWith(
+  final merged = _mergeStructuredFields(current, patch);
+  final canClearName =
+      clearName &&
+      current.name?.userEdited != true &&
+      current.name?.reviewed != true;
+  final canClearQth =
+      clearQth &&
+      current.qth?.userEdited != true &&
+      current.qth?.reviewed != true;
+  return merged.copyWith(
     status: LogStatus.needsReview,
     rawTranscript: rawText,
     errorMessage: patch.errorMessage,
     clearErrorMessage: patch.errorMessage == null,
+    clearName: canClearName,
+    clearQth: canClearQth,
   );
 }
 
@@ -1496,8 +1725,13 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
 
   Future<void> refresh([QsoQuery query = const QsoQuery()]) async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() {
-      return ref.read(qsoRepositoryProvider).listQsos(query);
+    state = await AsyncValue.guard(() async {
+      final qsos = await ref.read(qsoRepositoryProvider).listQsos(query);
+      final session = ref.read(qsoSessionProvider.notifier);
+      for (final qso in qsos) {
+        session.updateIfPresent(qso);
+      }
+      return qsos;
     });
   }
 
@@ -1565,10 +1799,15 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
   Future<void> restoreRawTranscript({
     required String qsoId,
     required String? rawTranscript,
+    required List<TranscriptSegment> transcriptSegments,
   }) async {
     await ref
         .read(qsoRepositoryProvider)
-        .setRawTranscript(qsoId, rawTranscript);
+        .setRawTranscript(
+          qsoId,
+          rawTranscript,
+          transcriptSegments: transcriptSegments,
+        );
     await refresh();
     ref.invalidate(localDataSummaryProvider);
   }
