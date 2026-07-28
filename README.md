@@ -1,45 +1,36 @@
 # 通联随记 / QSO Scribe App
 
-中文 | [English](#english)
+简体中文 | [English](./README_EN.md)
 
-通联随记是一个面向业余无线电用户的移动端 QSO 记录助手。项目目标是让操作者在户外、移动或手持设备不便输入的场景中，尽量通过语音和 AI 辅助完成通联记录，而不是在通联过程中频繁手写或打字。
+面向业余无线电用户的移动端 QSO 记录助手。通过录音、语音转写和 AI 结构化，减少户外与移动通联时的手工输入。
 
-本项目参考了 [QSO Scribe](https://github.com/richcannings/qso-scribe) 的核心方向：用语音转写和 AI 结构化，把真实通联音频整理为可导出的日志。不同之处在于，本项目直接面向移动 App 产品化，首版优先 Android，并提供简体中文和英文界面。
+## 应用截图
 
-## 为什么需要它
+| 通联录音 | 日志筛选 | 应用设置 |
+| --- | --- | --- |
+| <img src="./docs/screenshots/record.png" alt="通联录音页面" width="260"> | <img src="./docs/screenshots/logs.png" alt="日志筛选页面" width="260"> | <img src="./docs/screenshots/settings.png" alt="应用设置页面" width="260"> |
 
-便携通联、POTA/SOTA 活动、野外架台或移动操作时，操作者通常要同时处理电台、话筒、天线、手机、纸笔和日志软件。通联过程中最容易出错的字段往往又是最关键的字段：呼号、频率/波段、模式、RST、时间。
+## 核心能力
 
-通联随记希望把记录负担降下来：
+- 手动开始和结束每条 QSO。
+- 支持实时转写与结束后统一识别。
+- 区分我方和对方语音，并展示呼号气泡。
+- 提取呼号、时间、波段、频率、模式和 RST。
+- 标记低置信度字段，保留来源片段供复核。
+- QSO 结束后选择现在复核或稍后复核。
+- 在本次会话中保留记录和可继承状态。
+- 使用 SQLite 本地保存日志与原始转写。
+- 导出 ADIF、CSV 和原始转写文本。
+- 上传已确认日志至 QRZ。
+- 检查 GitHub Release 更新并下载 APK。
 
-- 通联时由用户手动开始和结束一条 QSO。
-- App 采集音频或接收补录内容。
-- 语音转写和结构化逻辑提取呼号、RST、波段、模式等字段。
-- 用户复核并补全低置信度字段。
-- 最终导出 ADIF、CSV 或原始转写文本。
+## 典型流程
 
-## 当前 MVP 范围
-
-当前版本聚焦本地优先的移动端 MVP。真实大模型和实时流式供应商的完整接入仍按后续集成推进，现阶段已保留供应商配置、模型分配和 OpenAI-compatible HTTP 接入边界。
-
-已覆盖或已预留的能力包括：
-
-- Android-first Flutter App。
-- 简体中文和英文双语界面。
-- 手动开始/结束 QSO。
-- 实时流式转写与结束后统一识别两种模式配置。
-- 录音采集、音频文件导入、纯文本导入。
-- QSO 草稿复核和字段编辑。
-- 必填字段校验：呼号、日期时间、频率或波段、模式、发送 RST、接收 RST。
-- 扩展字段：姓名、QTH、备注、设备、天线。
-- 日志状态：草稿、待确认、已确认、已导出、失败。
-- 本地 SQLite 存储。
-- 原始音频和原始转写保留策略。
-- 供应商配置与模型分配分离。
-- 按模型能力过滤转录、实时流式和结构化模型。
-- ADIF、CSV、原始转写文本导出。
-- 按状态、日期、波段、模式筛选导出。
-- GitHub Release 更新检查、APK 下载进度和用户确认安装。
+1. 开始一条 QSO。
+2. 完成通联并停止录音。
+3. 查看转写和结构化结果。
+4. 立即复核，或保存后稍后处理。
+5. 确认日志并导出或上传 QRZ。
 
 ## 技术栈
 
@@ -55,8 +46,8 @@
 ### 环境要求
 
 - Flutter SDK
-- Android Studio 或可用的 Android SDK/JDK
-- Android 模拟器或 Android 真机
+- Android SDK 与 JDK
+- Android 模拟器或真机
 
 ### 安装依赖
 
@@ -77,193 +68,58 @@ flutter analyze
 flutter test
 ```
 
-### 启动 App
+### 启动应用
 
 ```bash
 flutter run
 ```
 
-### 构建 Android Debug APK
+### 构建 Debug APK
 
 ```bash
 flutter build apk --debug --target-platform android-arm64
 ```
 
-### 发布 Android Release APK
+## 发布 Android Release
 
-正式发布通过 GitHub Actions 完成。发布前先更新 `RELEASE_NOTES.md`，推送 tag 会触发 `.github/workflows/release.yml`，流水线会运行 `flutter analyze`、`flutter test`，再构建签名 APK 并上传到 GitHub Release。
+正式发布由 GitHub Actions 构建。发布前更新 `RELEASE_NOTES.md` 和 `pubspec.yaml`。
 
-发布 tag 必须和 `pubspec.yaml` 的 `version` 完全一致，格式为：
+Tag 必须与 `pubspec.yaml` 的 `version` 完全一致：
 
 ```text
-v<major>.<minor>.<patch>+<build-number>
+version: 0.1.5+6
+tag: v0.1.5+6
 ```
-
-例如 `pubspec.yaml` 中为 `version: 0.1.2+3` 时，应推送 tag：
 
 ```bash
-git tag v0.1.2+3
 git push origin main
-git push origin v0.1.2+3
+git push origin v0.1.5+6
 ```
 
-GitHub Release 资产会使用 `qso-scribe-app-<version>-build<build-number>-android.apk` 命名，例如 `qso-scribe-app-0.1.2-build3-android.apk`。应用内更新检查会识别并下载该 APK。
+`+6` 是 Android 内部构建号。应用和 GitHub Release 标题仅展示 `0.1.5`。
 
-`+<build-number>` 仅作为 Android 内部构建号以及开发版本标识。正式版界面和 GitHub Release 标题只展示 `<major>.<minor>.<patch>`；每次正式发布必须递增该版本号，且构建号必须大于所有历史正式版本的构建号。
+发布资产命名为：
+
+```text
+qso-scribe-app-0.1.5-build6-android.apk
+```
 
 ## 项目结构
 
 ```text
+docs/screenshots/              README 应用截图
 lib/
-  main.dart
-  l10n/                     本地化资源和生成代码
-  src/
-    data/                   SQLite、Repository、导出服务
-    domain/                 领域模型和过滤逻辑
-    services/               录音、转写、结构化、模型列表服务
-    state/                  Riverpod 状态和依赖注入
-    ui/                     页面、主题和 App Shell
-test/                       单元测试和 Widget 测试
-android/                    Android 工程
-req.md                      需求说明和 Roadmap
+  l10n/                        本地化资源
+  src/data/                    SQLite、Repository、导出
+  src/domain/                  领域模型
+  src/services/                录音、转写、结构化
+  src/state/                   Riverpod 状态
+  src/ui/                      页面与主题
+test/                          单元测试和 Widget 测试
+android/                       Android 工程
+req.md                         需求与 Roadmap
 ```
 
 ## 许可证
 
 本项目使用 Apache License 2.0。详见 [LICENSE](./LICENSE)。
-
----
-
-## English
-
-[中文](#通联随记--qso-scribe-app) | English
-
-QSO Scribe App is a mobile QSO logging assistant for amateur radio operators. Its goal is to reduce manual logging during portable, mobile, or field operations by using audio capture, speech transcription, and AI-assisted structuring.
-
-The project is inspired by [QSO Scribe](https://github.com/richcannings/qso-scribe), which explores turning real activation audio into structured logs. This app focuses on productizing that idea as a mobile-first experience, starting with Android and supporting both Simplified Chinese and English.
-
-## Why This Exists
-
-During portable radio, POTA/SOTA-style activations, field setups, or mobile operation, the operator may be managing a radio, microphone, antenna, phone, paper log, and logging software at the same time. The fields that are easiest to miss are often the most important ones: callsign, band/frequency, mode, RST, and time.
-
-QSO Scribe App aims to reduce that friction:
-
-- The operator manually starts and ends each QSO.
-- The app captures audio or accepts later imports.
-- Speech transcription and structuring logic extracts callsigns, RST reports, bands, modes, and related fields.
-- The operator reviews low-confidence fields and fills missing values.
-- Logs can be exported as ADIF, CSV, or raw transcript text.
-
-## Current MVP Scope
-
-The current version focuses on a local-first mobile MVP. Full real-time provider integration and production-grade LLM/STT adapters are still integration work. The app already keeps the provider configuration, model assignment, and OpenAI-compatible HTTP boundary in place.
-
-Covered or reserved capabilities include:
-
-- Android-first Flutter app.
-- Simplified Chinese and English UI.
-- Manual QSO start/end.
-- Configurable real-time streaming and post-QSO recognition modes.
-- Audio recording, audio file import, and text import.
-- QSO draft review and field editing.
-- Required-field validation: callsign, date/time, frequency or band, mode, sent RST, received RST.
-- Optional fields: name, QTH, notes, rig, antenna.
-- Log statuses: draft, needs review, confirmed, exported, failed.
-- Local SQLite storage.
-- Raw audio and raw transcript retention policies.
-- Separate provider configuration and model assignment.
-- Capability-based filtering for transcription, streaming, and structuring models.
-- ADIF, CSV, and raw transcript export.
-- Export filtering by status, date, band, and mode.
-- GitHub Release update checks, APK download progress, and user-confirmed install prompt.
-
-## Tech Stack
-
-- Flutter
-- Riverpod
-- SQLite / sqflite
-- record
-- file_picker
-- OpenAI-compatible HTTP provider boundary
-
-## Local Development
-
-### Requirements
-
-- Flutter SDK
-- Android Studio or a working Android SDK/JDK
-- Android emulator or physical Android device
-
-### Install Dependencies
-
-```bash
-flutter pub get
-```
-
-### Generate Localizations
-
-```bash
-flutter gen-l10n
-```
-
-### Run Checks
-
-```bash
-flutter analyze
-flutter test
-```
-
-### Run The App
-
-```bash
-flutter run
-```
-
-### Build Android Debug APK
-
-```bash
-flutter build apk --debug --target-platform android-arm64
-```
-
-### Publish Android Release APK
-
-Production releases are built by GitHub Actions. Update `RELEASE_NOTES.md` before publishing. Pushing a tag triggers `.github/workflows/release.yml`; the workflow runs `flutter analyze`, `flutter test`, builds the signed APK, and uploads it to GitHub Releases.
-
-The release tag must exactly match `pubspec.yaml` `version` and use this format:
-
-```text
-v<major>.<minor>.<patch>+<build-number>
-```
-
-For example, when `pubspec.yaml` contains `version: 0.1.2+3`, push:
-
-```bash
-git tag v0.1.2+3
-git push origin main
-git push origin v0.1.2+3
-```
-
-The GitHub Release asset is named `qso-scribe-app-<version>-build<build-number>-android.apk`, for example `qso-scribe-app-0.1.2-build3-android.apk`. The in-app updater detects and downloads that APK.
-
-`+<build-number>` is only an internal Android build number and development-build identifier. Production UI and GitHub Release titles show only `<major>.<minor>.<patch>`. Every production release must increment that version, and its build number must exceed every previous production build number.
-
-## Project Structure
-
-```text
-lib/
-  main.dart
-  l10n/                     localization resources and generated code
-  src/
-    data/                   SQLite, repositories, export services
-    domain/                 domain models and filtering logic
-    services/               recording, transcription, structuring, model fetch services
-    state/                  Riverpod state and dependency injection
-    ui/                     screens, theme, and app shell
-test/                       unit and widget tests
-android/                    Android project
-req.md                      requirements and roadmap
-```
-
-## License
-
-This project is licensed under the Apache License 2.0. See [LICENSE](./LICENSE).
