@@ -270,6 +270,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return Scaffold(
       body: pages[_index],
       bottomNavigationBar: NavigationBar(
+        height: 64,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),
@@ -445,14 +446,7 @@ class _AfterQsoTab extends ConsumerWidget {
                 failureHandling: ref.read(failureHandlingProvider),
               );
           if (context.mounted) {
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => QsoReviewScreen(
-                  draft: generatedDraft,
-                  recordInSession: true,
-                ),
-              ),
-            );
+            await _handleCompletedQso(context, ref, generatedDraft);
           }
         },
       ),
@@ -525,16 +519,106 @@ class _StreamingTab extends ConsumerWidget {
                 startedAt: session.startedAt,
               );
           if (context.mounted) {
-            await Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => QsoReviewScreen(
-                  draft: generatedDraft,
-                  recordInSession: true,
-                ),
-              ),
-            );
+            await _handleCompletedQso(context, ref, generatedDraft);
           }
         },
+      ),
+    );
+  }
+}
+
+Future<void> _handleCompletedQso(
+  BuildContext context,
+  WidgetRef ref,
+  QsoDraft draft,
+) async {
+  var saving = false;
+  String? saveError;
+  final reviewNow = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => PopScope(
+      canPop: false,
+      child: StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          final callsign = draft.callsign.value.trim();
+          final summary = [
+            if (callsign.isNotEmpty) callsign,
+            _statusLabel(dialogContext, draft.status),
+          ].join(' · ');
+          return AlertDialog(
+            title: Text(dialogContext.l10n.qsoReview),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(summary),
+                if (draft.errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_errorLabel(dialogContext, draft.errorMessage!)),
+                ],
+                if (saveError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${dialogContext.l10n.errorDetail}: $saveError',
+                    style: TextStyle(
+                      color: Theme.of(dialogContext).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          saving = true;
+                          saveError = null;
+                        });
+                        try {
+                          await ref
+                              .read(qsoLogProvider.notifier)
+                              .saveAndRecordInSession(draft);
+                          ref
+                              .read(qsoCaptureProvider.notifier)
+                              .clearCompletedQso();
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop(false);
+                          }
+                        } catch (error) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              saving = false;
+                              saveError = _errorLabel(dialogContext, '$error');
+                            });
+                          }
+                        }
+                      },
+                child: saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(dialogContext.l10n.reviewLater),
+              ),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(true),
+                child: Text(dialogContext.l10n.reviewNow),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+  if (reviewNow == true && context.mounted) {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => QsoReviewScreen(draft: draft, recordInSession: true),
       ),
     );
   }
@@ -921,6 +1005,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
     };
   }
 
+  void _cycleFilterDimension() {
+    final dimensions = _FilterDimension.values;
+    final nextIndex = (dimensions.indexOf(_dimension) + 1) % dimensions.length;
+    setState(() => _dimension = dimensions[nextIndex]);
+  }
+
   void _clearLogFilters() {
     _searchController.clear();
     setState(() {
@@ -966,6 +1056,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
             if (tb == null) return -1;
             return _dateDesc ? tb.compareTo(ta) : ta.compareTo(tb);
           });
+          final dimensionChips = _buildDimensionChips(context, allLogs);
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(qsoLogProvider);
@@ -996,63 +1087,57 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                           onChanged: _onSearchChanged,
                         ),
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            PopupMenuButton<_FilterDimension>(
-                              tooltip: l10n.filter,
-                              initialValue: _dimension,
-                              onSelected: (value) =>
-                                  setState(() => _dimension = value),
-                              itemBuilder: (context) => [
-                                for (final dimension in _FilterDimension.values)
-                                  PopupMenuItem(
-                                    value: dimension,
-                                    child: Row(
-                                      children: [
-                                        if (dimension == _dimension) ...[
-                                          const Icon(Icons.check, size: 18),
-                                          const SizedBox(width: 8),
-                                        ],
-                                        Text(
-                                          _dimensionLabel(context, dimension),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                              child: Chip(
-                                avatar: const Icon(Icons.filter_list, size: 18),
-                                label: Text(
-                                  _dimensionLabel(context, _dimension),
+                        SizedBox(
+                          height: 40,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 40,
+                                child: IconButton(
+                                  tooltip: l10n.filter,
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  icon: const Icon(Icons.filter_list, size: 20),
+                                  onPressed: _cycleFilterDimension,
                                 ),
                               ),
-                            ),
-                            ActionChip(
-                              avatar: Icon(
-                                _dateDesc
-                                    ? Icons.arrow_downward
-                                    : Icons.arrow_upward,
-                                size: 18,
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: ListView(
+                                  scrollDirection: Axis.horizontal,
+                                  children: dimensionChips,
+                                ),
                               ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ActionChip(
                               label: Text(
-                                _dateDesc
-                                    ? l10n.sortNewestFirst
-                                    : l10n.sortOldestFirst,
+                                '${l10n.sortDate} ${_dateDesc ? '↓' : '↑'}',
                               ),
                               onPressed: () =>
                                   setState(() => _dateDesc = !_dateDesc),
                             ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${_dimensionLabel(context, _dimension)} · '
+                                '${filteredLogs.length} ${l10n.qsoCountUnit}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.end,
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                              ),
+                            ),
                           ],
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 40,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: _buildDimensionChips(context, allLogs),
-                          ),
                         ),
                       ],
                     ),
@@ -1200,6 +1285,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       child: FilterChip(
         label: Text(label),
         selected: selected,
+        showCheckmark: false,
         onSelected: (_) => onSelected(),
       ),
     );
@@ -4518,14 +4604,10 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 );
                 return;
               }
-              final id = await ref.read(qsoLogProvider.notifier).save(updated);
-              if (widget.recordInSession) {
-                final saved = await ref.read(qsoRepositoryProvider).findQso(id);
-                if (saved == null) {
-                  throw StateError('saved_qso_missing');
-                }
-                ref.read(qsoSessionProvider.notifier).record(saved);
-              }
+              final log = ref.read(qsoLogProvider.notifier);
+              final id = widget.recordInSession
+                  ? await log.saveAndRecordInSession(updated)
+                  : await log.save(updated);
               final importJobId = widget.importJobId;
               if (importJobId != null) {
                 await ref

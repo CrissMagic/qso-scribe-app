@@ -180,6 +180,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get saveQso => '保存 QSO';
 
   @override
+  String get reviewLater => '稍后复核';
+
+  @override
+  String get reviewNow => '现在复核';
+
+  @override
   String get clear => '清空';
 
   @override
@@ -782,6 +788,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get save => '保存';
+
+  @override
+  String get sortDate => '日期';
 
   @override
   String get sortNewestFirst => '最新优先';

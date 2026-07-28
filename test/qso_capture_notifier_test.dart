@@ -621,6 +621,34 @@ void main() {
     expect(qsos.single.band.value, '40m');
   });
 
+  test('稍后复核保存并登记到本次会话时保留 failed 状态', () async {
+    final repository = _InMemoryQsoRepository();
+    final container = ProviderContainer(
+      overrides: [
+        appSettingsProvider.overrideWith(_DefaultAppSettingsNotifier.new),
+        qsoRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(qsoLogProvider.future);
+    final failed = _structuredDraft(
+      callsign: 'K1ABC',
+      dateTime: DateTime(2026, 7, 17),
+      rawTranscript: '',
+    ).copyWith(status: LogStatus.failed, errorMessage: 'recognition_failed');
+
+    final id = await container
+        .read(qsoLogProvider.notifier)
+        .saveAndRecordInSession(failed);
+
+    final persisted = await repository.findQso(id);
+    final sessionQso = container.read(qsoSessionProvider).single;
+    expect(persisted?.status, LogStatus.failed);
+    expect(sessionQso.id, id);
+    expect(sessionQso.status, LogStatus.failed);
+    expect(sessionQso.errorMessage, 'recognition_failed');
+  });
+
   test('清除原始转写后同步本次会话中的同一条 QSO', () async {
     final repository = _InMemoryQsoRepository();
     final original = _sessionDraft(id: 'qso-1', status: LogStatus.needsReview)
@@ -973,6 +1001,9 @@ class _InMemoryQsoRepository extends QsoRepository {
   @override
   Future<List<QsoDraft>> listQsos([QsoQuery query = const QsoQuery()]) async =>
       _qsos.values.toList();
+
+  @override
+  Future<QsoDraft?> findQso(String id) async => _qsos[id];
 
   @override
   Future<void> clearRawTranscript(String id) async {

@@ -730,15 +730,7 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
     if (currentSession.isRecording || currentSession.isProcessing) {
       return false;
     }
-    _finalSegments = [];
-    _partial = null;
-    _streamingFailure = null;
-    _realtimeStructuringFailure = null;
-    _realtimeStructuringRequested = false;
-    _segmentAudio.takeBytes();
-    _segmentTimelineOffset = Duration.zero;
-    _segmentSeq = 0;
-    state = AsyncData(QsoCaptureState(currentDraft: _emptyDraft()));
+    _resetCapture();
 
     final recorder = ref.read(recordingSessionProvider.notifier);
     recorder.prepareStart(mode);
@@ -777,6 +769,20 @@ class QsoCaptureNotifier extends AsyncNotifier<QsoCaptureState> {
       return false;
     }
     return true;
+  }
+
+  void clearCompletedQso() => _resetCapture();
+
+  void _resetCapture() {
+    _finalSegments = [];
+    _partial = null;
+    _streamingFailure = null;
+    _realtimeStructuringFailure = null;
+    _realtimeStructuringRequested = false;
+    _segmentAudio.takeBytes();
+    _segmentTimelineOffset = Duration.zero;
+    _segmentSeq = 0;
+    state = AsyncData(QsoCaptureState(currentDraft: _emptyDraft()));
   }
 
   // 解析并启动流式转写：仅支持实现了实时传输的供应商（当前为 Qwen）。
@@ -1757,6 +1763,16 @@ class QsoLogNotifier extends AsyncNotifier<List<QsoDraft>> {
         .updateIfPresent(qsoToSave.copyWith(id: id));
     await refresh();
     ref.invalidate(localDataSummaryProvider);
+    return id;
+  }
+
+  Future<String> saveAndRecordInSession(QsoDraft qso) async {
+    final id = await save(qso);
+    final saved = await ref.read(qsoRepositoryProvider).findQso(id);
+    if (saved == null) {
+      throw StateError('saved_qso_missing');
+    }
+    ref.read(qsoSessionProvider.notifier).record(saved);
     return id;
   }
 

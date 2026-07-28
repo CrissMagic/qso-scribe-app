@@ -440,6 +440,18 @@ abstract class AppLocalizations {
   /// **'Save QSO'**
   String get saveQso;
 
+  /// No description provided for @reviewLater.
+  ///
+  /// In en, this message translates to:
+  /// **'Review later'**
+  String get reviewLater;
+
+  /// No description provided for @reviewNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Review now'**
+  String get reviewNow;
+
   /// No description provided for @clear.
   ///
   /// In en, this message translates to:
@@ -1639,6 +1651,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Save'**
   String get save;
+
+  /// No description provided for @sortDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date'**
+  String get sortDate;
 
   /// No description provided for @sortNewestFirst.
   ///

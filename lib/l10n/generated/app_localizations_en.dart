@@ -186,6 +186,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get saveQso => 'Save QSO';
 
   @override
+  String get reviewLater => 'Review later';
+
+  @override
+  String get reviewNow => 'Review now';
+
+  @override
   String get clear => 'Clear';
 
   @override
@@ -817,6 +823,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get save => 'Save';
+
+  @override
+  String get sortDate => 'Date';
 
   @override
   String get sortNewestFirst => 'Newest first';
