@@ -90,6 +90,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settings => '设置';
 
   @override
+  String get settingsOverviewDesc => '管理电台、AI 模型和应用偏好';
+
+  @override
   String get startQso => '开始通联';
 
   @override
@@ -268,6 +271,21 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get modelAssignmentDesc => '为转录和整理分配模型';
+
+  @override
+  String get modelSettingsOverviewDesc => '查看工作流分配、模型能力和服务配置';
+
+  @override
+  String get workflowModels => '工作流模型';
+
+  @override
+  String get configuredModels => '已配置模型';
+
+  @override
+  String get manageProviders => '管理供应商';
+
+  @override
+  String get noModelAssigned => '尚未分配';
 
   @override
   String get audioRetention => '音频保留策略';
@@ -926,6 +944,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aboutDesc => '应用信息、隐私政策和致谢';
+
+  @override
+  String get authorCallsign => '作者呼号';
 
   @override
   String get appDescription => '本地 QSO 记录工具。';

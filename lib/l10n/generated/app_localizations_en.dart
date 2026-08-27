@@ -95,6 +95,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settings => 'Settings';
 
   @override
+  String get settingsOverviewDesc =>
+      'Manage station, AI model, and app preferences';
+
+  @override
   String get startQso => 'Start QSO';
 
   @override
@@ -276,6 +280,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get modelAssignmentDesc => 'Assign models to workflow tasks';
+
+  @override
+  String get modelSettingsOverviewDesc =>
+      'Review workflow assignments, model capabilities, and providers';
+
+  @override
+  String get workflowModels => 'Workflow models';
+
+  @override
+  String get configuredModels => 'Configured models';
+
+  @override
+  String get manageProviders => 'Manage providers';
+
+  @override
+  String get noModelAssigned => 'Not assigned';
 
   @override
   String get audioRetention => 'Audio retention';
@@ -962,6 +982,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutDesc => 'App info, privacy policy, and credits';
+
+  @override
+  String get authorCallsign => 'Author callsign';
 
   @override
   String get appDescription => 'Local QSO logging tool.';

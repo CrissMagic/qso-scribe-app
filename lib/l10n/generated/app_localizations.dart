@@ -260,6 +260,12 @@ abstract class AppLocalizations {
   /// **'Settings'**
   String get settings;
 
+  /// No description provided for @settingsOverviewDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage station, AI model, and app preferences'**
+  String get settingsOverviewDesc;
+
   /// No description provided for @startQso.
   ///
   /// In en, this message translates to:
@@ -619,6 +625,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Assign models to workflow tasks'**
   String get modelAssignmentDesc;
+
+  /// No description provided for @modelSettingsOverviewDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Review workflow assignments, model capabilities, and providers'**
+  String get modelSettingsOverviewDesc;
+
+  /// No description provided for @workflowModels.
+  ///
+  /// In en, this message translates to:
+  /// **'Workflow models'**
+  String get workflowModels;
+
+  /// No description provided for @configuredModels.
+  ///
+  /// In en, this message translates to:
+  /// **'Configured models'**
+  String get configuredModels;
+
+  /// No description provided for @manageProviders.
+  ///
+  /// In en, this message translates to:
+  /// **'Manage providers'**
+  String get manageProviders;
+
+  /// No description provided for @noModelAssigned.
+  ///
+  /// In en, this message translates to:
+  /// **'Not assigned'**
+  String get noModelAssigned;
 
   /// No description provided for @audioRetention.
   ///
@@ -1927,6 +1963,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'App info, privacy policy, and credits'**
   String get aboutDesc;
+
+  /// No description provided for @authorCallsign.
+  ///
+  /// In en, this message translates to:
+  /// **'Author callsign'**
+  String get authorCallsign;
 
   /// No description provided for @appDescription.
   ///

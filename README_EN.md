@@ -4,6 +4,8 @@
 
 A mobile QSO logging assistant for amateur radio operators. It reduces manual input with audio recording, speech transcription, and AI-assisted structuring.
 
+Author callsign: **BH8HGF**
+
 ## Screenshots
 
 | QSO recording | Log filters | Settings |
@@ -82,26 +84,26 @@ flutter build apk --debug --target-platform android-arm64
 
 ## Publish an Android Release
 
-GitHub Actions builds production releases. Update `RELEASE_NOTES.md` and `pubspec.yaml` first.
+GitHub Actions builds production releases. Update [`CHANGELOG.md`](./CHANGELOG.md), `RELEASE_NOTES.md`, and `pubspec.yaml` first.
 
 The tag must exactly match the `pubspec.yaml` version:
 
 ```text
-version: 0.1.5+6
-tag: v0.1.5+6
+version: 0.1.6+7
+tag: v0.1.6+7
 ```
 
 ```bash
 git push origin main
-git push origin v0.1.5+6
+git push origin v0.1.6+7
 ```
 
-`+6` is the internal Android build number. The app and GitHub Release title only show `0.1.5`.
+`+7` is the internal Android build number. The app and GitHub Release title only show `0.1.6`.
 
 The release asset uses this name:
 
 ```text
-qso-scribe-app-0.1.5-build6-android.apk
+qso-scribe-app-0.1.6-build7-android.apk
 ```
 
 ## Project Structure

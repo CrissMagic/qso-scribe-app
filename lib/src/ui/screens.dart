@@ -21,6 +21,8 @@ import '../state/app_state.dart';
 import 'band_colors.dart';
 import 'theme.dart';
 
+part 'model_settings_screens.dart';
+
 extension L10nX on BuildContext {
   AppLocalizations get l10n => AppLocalizations.of(this);
 }
@@ -78,7 +80,7 @@ class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
           children: [
             Text(
               l10n.firstRunTitle,
-              style: Theme.of(context).textTheme.headlineMedium,
+              style: Theme.of(context).textTheme.appPageTitle,
             ),
             const SizedBox(height: 8),
             Text(l10n.firstRunSubtitle),
@@ -561,9 +563,10 @@ Future<void> _handleCompletedQso(
                   const SizedBox(height: 8),
                   Text(
                     '${dialogContext.l10n.errorDetail}: $saveError',
-                    style: TextStyle(
-                      color: Theme.of(dialogContext).colorScheme.error,
-                    ),
+                    style: Theme.of(dialogContext).textTheme.appSupporting
+                        .copyWith(
+                          color: Theme.of(dialogContext).colorScheme.error,
+                        ),
                   ),
                 ],
               ],
@@ -828,7 +831,9 @@ class _RealtimeDraftFieldTile extends StatelessWidget {
             if (item.needsReview)
               Text(
                 context.l10n.reviewRequired,
-                style: TextStyle(color: colors.error),
+                style: Theme.of(
+                  context,
+                ).textTheme.appMetadata.copyWith(color: colors.error),
               ),
             if (item.needsReview && sourceText?.isNotEmpty == true)
               Text(
@@ -875,7 +880,7 @@ class _CurrentSessionCard extends StatelessWidget {
           children: [
             Text(
               context.l10n.recentSession,
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.appSectionTitle,
             ),
             const SizedBox(height: 8),
             if (qsos.isEmpty)
@@ -1129,8 +1134,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 textAlign: TextAlign.end,
-                                style: Theme.of(context).textTheme.labelMedium
-                                    ?.copyWith(
+                                style: Theme.of(context).textTheme.appMetadata
+                                    .copyWith(
                                       color: Theme.of(
                                         context,
                                       ).colorScheme.onSurfaceVariant,
@@ -1399,7 +1404,7 @@ class ImportScreen extends ConsumerWidget {
           const SizedBox(height: 24),
           Text(
             l10n.recentImports,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: Theme.of(context).textTheme.appSectionTitle,
           ),
           const SizedBox(height: 12),
           ...jobsState.when(
@@ -1575,7 +1580,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           Center(
             child: Text(
               '$selectedCount ${l10n.selectedForExport}',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              style: Theme.of(context).textTheme.appControlLabel.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -1589,7 +1594,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           const SizedBox(height: 24),
           Text(
             l10n.exportHistory,
-            style: Theme.of(context).textTheme.titleLarge,
+            style: Theme.of(context).textTheme.appSectionTitle,
           ),
           const SizedBox(height: 12),
           ...exportHistoryState.when(
@@ -1744,9 +1749,14 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
         children: [
-          _CardSection(
+          _SettingsPageHeader(
+            title: l10n.settings,
+            subtitle: l10n.settingsOverviewDesc,
+          ),
+          const SizedBox(height: 24),
+          _SettingsGroup(
             title: l10n.stationSettings,
             children: [
               _SettingsTile(
@@ -1771,34 +1781,24 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _CardSection(
+          const SizedBox(height: 20),
+          _SettingsGroup(
             title: l10n.aiModels,
             children: [
               _SettingsTile(
-                icon: Icons.hub,
-                title: l10n.providerManagement,
-                subtitle: l10n.providerManagementDesc,
+                icon: Icons.auto_awesome,
+                title: l10n.aiModels,
+                subtitle: l10n.modelSettingsOverviewDesc,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const ProviderSetupScreen(),
-                  ),
-                ),
-              ),
-              _SettingsTile(
-                icon: Icons.model_training,
-                title: l10n.modelAssignment,
-                subtitle: l10n.modelAssignmentDesc,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const ModelAssignmentScreen(),
+                    builder: (_) => const AiModelSettingsScreen(),
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _CardSection(
+          const SizedBox(height: 20),
+          _SettingsGroup(
             title: l10n.appSettings,
             children: [
               _SettingsTile(
@@ -1873,8 +1873,8 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _CardSection(
+          const SizedBox(height: 20),
+          _SettingsGroup(
             title: l10n.about,
             children: [
               _SettingsTile(
@@ -2121,12 +2121,12 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          Text(label, style: Theme.of(context).textTheme.appBody),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
-              style: Theme.of(context).textTheme.titleMedium,
+              style: Theme.of(context).textTheme.appItemTitle,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -2197,7 +2197,7 @@ class _SoftwareUpdateScreenState extends ConsumerState<SoftwareUpdateScreen> {
       ],
       Text(
         l10n.newVersionAvailable,
-        style: Theme.of(context).textTheme.titleMedium,
+        style: Theme.of(context).textTheme.appItemTitle,
       ),
       const SizedBox(height: 12),
       ExpansionTile(
@@ -3026,11 +3026,11 @@ class _UsageStat extends StatelessWidget {
                 children: [
                   Icon(icon, size: 18, color: osc.phosphor),
                   const SizedBox(width: 6),
-                  Text(label, style: Theme.of(context).textTheme.labelMedium),
+                  Text(label, style: Theme.of(context).textTheme.appMetadata),
                 ],
               ),
               const SizedBox(height: 6),
-              Text(value, style: Theme.of(context).textTheme.headlineSmall),
+              Text(value, style: Theme.of(context).textTheme.appMetricValue),
             ],
           ),
         ),
@@ -3064,18 +3064,20 @@ class _TokenUsageItem extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '${record.provider} · ${record.model}',
-                    style: Theme.of(context).textTheme.titleSmall,
+                    style: Theme.of(context).textTheme.appCompactTitle,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Text(taskLabel, style: Theme.of(context).textTheme.labelSmall),
+                Text(
+                  taskLabel,
+                  style: Theme.of(context).textTheme.appMicroLabel,
+                ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
               _formatLocalDateTime(record.createdAt),
-              style: TextStyle(
-                fontSize: 11,
+              style: Theme.of(context).textTheme.appMicroLabel.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
@@ -3113,14 +3115,15 @@ Widget _tokenPair(BuildContext context, String label, String? value) {
     children: [
       Text(
         '$label: ',
-        style: TextStyle(
-          fontSize: 12,
+        style: Theme.of(context).textTheme.appMetadata.copyWith(
           color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
       Text(
         value ?? '—',
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+        style: Theme.of(
+          context,
+        ).textTheme.appMetadata.copyWith(fontWeight: FontWeight.w700),
       ),
     ],
   );
@@ -3172,12 +3175,32 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
                 const SizedBox(height: 12),
                 Text(
                   l10n.appTitle,
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: Theme.of(context).textTheme.appSectionTitle,
                 ),
                 const SizedBox(height: 4),
                 Text(
                   l10n.aboutAppVersion(version),
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: Theme.of(context).textTheme.appSupporting,
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: osc.phosphor.withAlpha(20),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: osc.phosphor.withAlpha(100)),
+                  ),
+                  child: Text(
+                    '${l10n.authorCallsign} · BH8HGF',
+                    style: Theme.of(context)
+                        .textTheme
+                        .appControlLabel
+                        .appMonospace
+                        .copyWith(color: osc.phosphor, letterSpacing: 0.5),
+                  ),
                 ),
               ],
             ),
@@ -3216,808 +3239,6 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
         ],
       ),
     );
-  }
-}
-
-class ProviderSetupScreen extends ConsumerStatefulWidget {
-  const ProviderSetupScreen({super.key});
-
-  @override
-  ConsumerState<ProviderSetupScreen> createState() =>
-      _ProviderSetupScreenState();
-}
-
-class _ProviderSetupScreenState extends ConsumerState<ProviderSetupScreen> {
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
-    final providersState = ref.watch(providerProfilesProvider);
-    final models = ref
-        .watch(modelOptionsProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => const <AiModelOption>[],
-        );
-    final modelCountByProvider = <String, int>{};
-    for (final model in models) {
-      modelCountByProvider.update(
-        model.providerId,
-        (value) => value + 1,
-        ifAbsent: () => 1,
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.providerSetup)),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddProviderDialog,
-        icon: const Icon(Icons.add),
-        label: Text(l10n.addProvider),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ...providersState.when(
-            data: (providers) => [
-              if (providers.isEmpty)
-                _PlaceholderCard(
-                  title: l10n.providerManagement,
-                  text: l10n.noConfiguredProviders,
-                  icon: Icons.hub,
-                ),
-              for (final provider in providers) ...[
-                ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                    side: BorderSide(
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
-                  leading: const Icon(Icons.hub),
-                  title: Text(provider.name),
-                  subtitle: Text(
-                    [
-                      provider.type,
-                      if (provider.baseUrl != null) provider.baseUrl!,
-                      '${modelCountByProvider[provider.id] ?? 0} ${l10n.savedModels}',
-                    ].join('\n'),
-                  ),
-                  isThreeLine: true,
-                  onTap: () => _showProviderDialog(provider),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Tooltip(
-                        message: provider.hasApiKey
-                            ? l10n.apiKeySaved
-                            : l10n.apiKeyNotSaved,
-                        child: Icon(
-                          provider.hasApiKey
-                              ? Icons.key
-                              : Icons.key_off_outlined,
-                          color: provider.hasApiKey ? osc.phosphor : null,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: l10n.editProvider,
-                        onPressed: () => _showProviderDialog(provider),
-                        icon: const Icon(Icons.edit_outlined),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ],
-            error: (error, stackTrace) => [
-              _PlaceholderCard(
-                title: l10n.failed,
-                text: error.toString(),
-                icon: Icons.error_outline,
-              ),
-            ],
-            loading: () => const [Center(child: CircularProgressIndicator())],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showAddProviderDialog() async {
-    await _showProviderDialog();
-  }
-
-  Future<void> _showProviderDialog([ProviderProfile? provider]) async {
-    final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => ProviderFormScreen(provider: provider),
-      ),
-    );
-    if (saved == true) {
-      ref.invalidate(providerProfilesProvider);
-      ref.invalidate(modelOptionsProvider);
-      if (mounted) {
-        showTopNotice(context, context.l10n.providerSaved);
-      }
-    }
-  }
-}
-
-class ProviderFormScreen extends ConsumerStatefulWidget {
-  const ProviderFormScreen({super.key, this.provider});
-
-  final ProviderProfile? provider;
-
-  @override
-  ConsumerState<ProviderFormScreen> createState() => _ProviderFormScreenState();
-}
-
-class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
-  final _nameController = TextEditingController();
-  final _baseUrlController = TextEditingController(
-    text: descriptorFor(AiProvider.openai).defaultBaseUrl,
-  );
-  final _apiKeyController = TextEditingController();
-  final _manualModelController = TextEditingController();
-  AiProvider _providerKey = AiProvider.openai;
-  bool _busy = false;
-  bool _loadingInitial = false;
-  List<FetchedProviderModel> _models = const [];
-  final Set<ModelCapability> _manualCapabilities = {
-    ModelCapability.text,
-    ModelCapability.structuring,
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    final provider = widget.provider;
-    if (provider == null) {
-      _models = _presetModelsFor(descriptorFor(_providerKey));
-      return;
-    }
-    _loadingInitial = true;
-    _providerKey = AiProvider.fromKey(provider.type);
-    _nameController.text = provider.name;
-    _baseUrlController.text =
-        provider.baseUrl ?? descriptorFor(_providerKey).defaultBaseUrl;
-    Future.microtask(_loadExistingProvider);
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _baseUrlController.dispose();
-    _apiKeyController.dispose();
-    _manualModelController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final disabled = _busy || _loadingInitial;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.provider == null ? l10n.addProvider : l10n.editProvider,
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_loadingInitial) ...[
-                  const LinearProgressIndicator(),
-                  const SizedBox(height: 12),
-                ],
-                DropdownButtonFormField<AiProvider>(
-                  initialValue: _providerKey,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.providerType,
-                    helperText: l10n.providerTypeHint,
-                  ),
-                  items: [
-                    for (final descriptor in selectableProviders)
-                      DropdownMenuItem(
-                        value: descriptor.provider,
-                        child: Text(
-                          descriptor.displayName,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                  onChanged: disabled
-                      ? null
-                      : (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setState(() {
-                            _providerKey = value;
-                            final descriptor = descriptorFor(value);
-                            _baseUrlController.text = descriptor.defaultBaseUrl;
-                            _models = _presetModelsFor(descriptor);
-                            if (_nameController.text.trim().isEmpty) {
-                              _nameController.text = descriptor.displayName;
-                            }
-                          });
-                        },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _nameController,
-                  enabled: !disabled,
-                  decoration: InputDecoration(
-                    labelText: l10n.displayName,
-                    helperText: l10n.displayNameHint,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _baseUrlController,
-                  enabled: !disabled,
-                  keyboardType: TextInputType.url,
-                  decoration: InputDecoration(
-                    labelText: l10n.baseUrl,
-                    helperText: l10n.baseUrlHint,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _apiKeyController,
-                  enabled: !disabled,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: l10n.apiKey,
-                    helperText: l10n.apiKeyHint,
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.content_paste),
-                      tooltip: l10n.paste,
-                      onPressed: disabled ? null : _pasteApiKey,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: disabled ? null : _testConnection,
-                    icon: const Icon(Icons.network_check),
-                    label: Text(l10n.testConnection),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  l10n.savedModels,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                if (_models.isEmpty)
-                  Text(l10n.noModelsSaved)
-                else
-                  for (final model in _models)
-                    _FetchedModelTile(
-                      model: model,
-                      onSelectedChanged: (selected) {
-                        setState(
-                          () => _models = [
-                            for (final item in _models)
-                              item.id == model.id
-                                  ? item.copyWith(selected: selected)
-                                  : item,
-                          ],
-                        );
-                      },
-                      onCapabilitiesChanged: (capabilities) {
-                        setState(
-                          () => _models = [
-                            for (final item in _models)
-                              item.id == model.id
-                                  ? item.copyWith(capabilities: capabilities)
-                                  : item,
-                          ],
-                        );
-                      },
-                    ),
-                const Divider(height: 24),
-                Text(
-                  l10n.addModel,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _manualModelController,
-                  enabled: !disabled,
-                  decoration: InputDecoration(
-                    labelText: l10n.modelName,
-                    helperText: l10n.modelNameHint,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  l10n.capabilityHint,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    for (final capability in ModelCapability.values)
-                      FilterChip(
-                        label: Text(_capabilityLabel(context, capability)),
-                        selected: _manualCapabilities.contains(capability),
-                        onSelected: disabled
-                            ? null
-                            : (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    _manualCapabilities.add(capability);
-                                  } else {
-                                    _manualCapabilities.remove(capability);
-                                  }
-                                });
-                              },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: disabled ? null : _addManualModel,
-                    icon: const Icon(Icons.add),
-                    label: Text(l10n.addModel),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: disabled ? null : _saveProvider,
-                    icon: _busy
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save),
-                    label: Text(l10n.saveProvider),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _loadExistingProvider() async {
-    final provider = widget.provider;
-    if (provider == null) {
-      return;
-    }
-    try {
-      final connection = await ref
-          .read(providerRepositoryProvider)
-          .findConnection(provider.id);
-      final models = await ref
-          .read(modelRepositoryProvider)
-          .listModelsForProvider(provider.id);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        final descriptor = descriptorFor(
-          connection != null
-              ? AiProvider.fromKey(connection.type)
-              : _providerKey,
-        );
-        if (connection != null) {
-          _providerKey = AiProvider.fromKey(connection.type);
-          _nameController.text = connection.name;
-          _baseUrlController.text =
-              (connection.baseUrl != null && connection.baseUrl!.isNotEmpty)
-              ? connection.baseUrl!
-              : descriptor.defaultBaseUrl;
-          _apiKeyController.text = connection.apiKey ?? '';
-        }
-        final presets = _presetModelsFor(descriptor);
-        final persisted = models
-            .map(
-              (model) => FetchedProviderModel(
-                id: model.name,
-                capabilities: model.capabilities,
-              ),
-            )
-            .toList();
-        _models = _mergeFetchedModels(presets, persisted);
-        _loadingInitial = false;
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() => _loadingInitial = false);
-      _showSnack(_errorLabel(context, '$error'));
-    }
-  }
-
-  Future<void> _pasteApiKey() async {
-    final data = await Clipboard.getData('text/plain');
-    final text = data?.text?.trim();
-    if (text != null && text.isNotEmpty) {
-      setState(() => _apiKeyController.text = text);
-    }
-  }
-
-  Future<void> _testConnection() async {
-    final descriptor = descriptorFor(_providerKey);
-    final structuringModel = descriptor.structuringModels.isNotEmpty
-        ? descriptor.structuringModels.first.name
-        : '';
-    if (structuringModel.isEmpty) {
-      _showSnack(context.l10n.connectionTestFailed);
-      return;
-    }
-    await _runBusy(() async {
-      await ref
-          .read(providerStructuringClientProvider)
-          .probe(
-            descriptor: descriptor,
-            baseUrl: _baseUrlController.text.trim().isEmpty
-                ? descriptor.defaultBaseUrl
-                : _baseUrlController.text.trim(),
-            apiKey: _blankToNull(_apiKeyController.text),
-            modelName: structuringModel,
-          );
-      if (mounted) {
-        _showSnack(context.l10n.connectionTestSucceeded);
-      }
-    });
-  }
-
-  Future<void> _saveProvider() async {
-    final l10n = context.l10n;
-    final name = _nameController.text.trim();
-    final baseUrl = _baseUrlController.text.trim();
-    if (name.isEmpty) {
-      _showSnack(l10n.providerRequiredFields);
-      return;
-    }
-    final descriptor = descriptorFor(_providerKey);
-    final effectiveBaseUrl = baseUrl.isEmpty
-        ? descriptor.defaultBaseUrl
-        : baseUrl;
-    if (effectiveBaseUrl.isEmpty) {
-      _showSnack(l10n.baseUrlRequired);
-      return;
-    }
-
-    await _runBusy(() async {
-      final providerId =
-          widget.provider?.id ??
-          'provider-${DateTime.now().toUtc().microsecondsSinceEpoch}';
-      await ref
-          .read(providerRepositoryProvider)
-          .saveProvider(
-            id: providerId,
-            name: name,
-            type: _providerKey.name,
-            baseUrl: effectiveBaseUrl,
-            apiKey: _blankToNull(_apiKeyController.text),
-          );
-      await ref
-          .read(modelRepositoryProvider)
-          .replaceModelsForProvider(
-            providerId: providerId,
-            models: _models
-                .where((model) => model.selected)
-                .map(
-                  (model) => (name: model.id, capabilities: model.capabilities),
-                ),
-          );
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
-    });
-  }
-
-  void _addManualModel() {
-    final name = _manualModelController.text.trim();
-    if (name.isEmpty || _manualCapabilities.isEmpty) {
-      _showSnack(context.l10n.modelRequiredFields);
-      return;
-    }
-    final model = FetchedProviderModel(
-      id: name,
-      capabilities: {..._manualCapabilities},
-    );
-    setState(() {
-      _models = _mergeFetchedModels(_models, [model]);
-      _manualModelController.clear();
-    });
-  }
-
-  Future<void> _runBusy(Future<void> Function() action) async {
-    setState(() => _busy = true);
-    try {
-      await action();
-    } catch (error) {
-      if (mounted) {
-        _showSnack(_errorLabel(context, '$error'));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
-  }
-
-  void _showSnack(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-class ModelAssignmentScreen extends ConsumerStatefulWidget {
-  const ModelAssignmentScreen({super.key});
-
-  @override
-  ConsumerState<ModelAssignmentScreen> createState() =>
-      _ModelAssignmentScreenState();
-}
-
-class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
-  String? _selectedTranscriptionProviderId;
-  String? _selectedTranscriptionModelId;
-  String? _selectedStreamingProviderId;
-  String? _selectedStreamingModelId;
-  String? _selectedStructuringProviderId;
-  String? _selectedStructuringModelId;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final models = ref
-        .watch(modelOptionsProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => const <AiModelOption>[],
-        );
-    final providers = ref
-        .watch(providerProfilesProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => const <ProviderProfile>[],
-        );
-    final assignments = ref
-        .watch(modelAssignmentsProvider)
-        .maybeWhen(
-          data: (value) => value,
-          orElse: () => const <ModelAssignment>[],
-        );
-    final transcriptionAssignment = _assignmentFor(
-      assignments,
-      ModelAssignmentTask.transcription,
-    );
-    final streamingAssignment = _assignmentFor(
-      assignments,
-      ModelAssignmentTask.transcriptionStreaming,
-    );
-    final structuringAssignment = _assignmentFor(
-      assignments,
-      ModelAssignmentTask.structuring,
-    );
-
-    final selectedTranscriptionProvider =
-        _selectedTranscriptionProviderId ??
-        _validProviderId(providers, transcriptionAssignment?.providerId);
-    final selectedStreamingProvider =
-        _selectedStreamingProviderId ??
-        _validProviderId(providers, streamingAssignment?.providerId);
-    final selectedStructuringProvider =
-        _selectedStructuringProviderId ??
-        _validProviderId(providers, structuringAssignment?.providerId);
-
-    final transcriptionModels = models
-        .where(
-          (model) =>
-              model.providerId == selectedTranscriptionProvider &&
-              model.supports(ModelCapability.speech),
-        )
-        .toList();
-    final streamingModels = models
-        .where(
-          (model) =>
-              model.providerId == selectedStreamingProvider &&
-              model.supports(ModelCapability.streaming),
-        )
-        .toList();
-    final structuringModels = models
-        .where(
-          (model) =>
-              model.providerId == selectedStructuringProvider &&
-              model.supports(ModelCapability.structuring),
-        )
-        .toList();
-    final selectedTranscription = _validModelId(
-      transcriptionModels,
-      _selectedTranscriptionModelId ?? transcriptionAssignment?.modelId,
-    );
-    final selectedStreaming = _validModelId(
-      streamingModels,
-      _selectedStreamingModelId ?? streamingAssignment?.modelId,
-    );
-    final selectedStructuring = _validModelId(
-      structuringModels,
-      _selectedStructuringModelId ?? structuringAssignment?.modelId,
-    );
-
-    return Scaffold(
-      appBar: AppBar(title: Text(l10n.modelAssignment)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (providers.isEmpty)
-            _PlaceholderCard(
-              title: l10n.providerManagement,
-              text: l10n.noConfiguredProviders,
-              icon: Icons.hub,
-            ),
-          _ModelAssignmentSection(
-            title: l10n.transcriptionModelAfter,
-            providers: providers,
-            selectedProviderId: selectedTranscriptionProvider,
-            models: transcriptionModels,
-            selectedModelId: selectedTranscription,
-            onProviderChanged: (value) {
-              setState(() {
-                _selectedTranscriptionProviderId = value;
-                _selectedTranscriptionModelId = null;
-              });
-            },
-            onChanged: (value) {
-              setState(() => _selectedTranscriptionModelId = value);
-            },
-          ),
-          const SizedBox(height: 16),
-          _ModelAssignmentSection(
-            title: l10n.transcriptionModelStreaming,
-            providers: providers,
-            selectedProviderId: selectedStreamingProvider,
-            models: streamingModels,
-            selectedModelId: selectedStreaming,
-            onProviderChanged: (value) {
-              setState(() {
-                _selectedStreamingProviderId = value;
-                _selectedStreamingModelId = null;
-              });
-            },
-            onChanged: (value) {
-              setState(() => _selectedStreamingModelId = value);
-            },
-          ),
-          const SizedBox(height: 16),
-          _ModelAssignmentSection(
-            title: l10n.structuringModel,
-            providers: providers,
-            selectedProviderId: selectedStructuringProvider,
-            models: structuringModels,
-            selectedModelId: selectedStructuring,
-            onProviderChanged: (value) {
-              setState(() {
-                _selectedStructuringProviderId = value;
-                _selectedStructuringModelId = null;
-              });
-            },
-            onChanged: (value) {
-              setState(() => _selectedStructuringModelId = value);
-            },
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _saveAssignments(
-              models,
-              selectedTranscription,
-              selectedStreaming,
-              selectedStructuring,
-            ),
-            icon: const Icon(Icons.save),
-            label: Text(l10n.confirmAndSave),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String? _validProviderId(List<ProviderProfile> providers, String? id) {
-    if (id != null && providers.any((provider) => provider.id == id)) {
-      return id;
-    }
-    return providers.isEmpty ? null : providers.first.id;
-  }
-
-  String? _validModelId(List<AiModelOption> models, String? id) {
-    if (id != null && models.any((model) => model.id == id)) {
-      return id;
-    }
-    return null;
-  }
-
-  ModelAssignment? _assignmentFor(
-    List<ModelAssignment> assignments,
-    ModelAssignmentTask task,
-  ) {
-    for (final assignment in assignments) {
-      if (assignment.task == task) {
-        return assignment;
-      }
-    }
-    return null;
-  }
-
-  Future<void> _saveAssignments(
-    List<AiModelOption> models,
-    String? selectedTranscription,
-    String? selectedStreaming,
-    String? selectedStructuring,
-  ) async {
-    final transcription = _modelById(models, selectedTranscription);
-    final structuring = _modelById(models, selectedStructuring);
-    final streaming = _modelById(models, selectedStreaming);
-    if (transcription == null || structuring == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(context.l10n.modelAssignmentRequired)),
-      );
-      return;
-    }
-    final notifier = ref.read(modelAssignmentsProvider.notifier);
-    await notifier.save(
-      ModelAssignment(
-        task: ModelAssignmentTask.transcription,
-        providerId: transcription.providerId,
-        modelId: transcription.id,
-      ),
-    );
-    if (streaming != null) {
-      await notifier.save(
-        ModelAssignment(
-          task: ModelAssignmentTask.transcriptionStreaming,
-          providerId: streaming.providerId,
-          modelId: streaming.id,
-        ),
-      );
-    }
-    await notifier.save(
-      ModelAssignment(
-        task: ModelAssignmentTask.structuring,
-        providerId: structuring.providerId,
-        modelId: structuring.id,
-      ),
-    );
-    if (mounted) {
-      showTopNotice(context, context.l10n.modelAssignmentSaved);
-    }
-  }
-
-  AiModelOption? _modelById(List<AiModelOption> models, String? id) {
-    if (id == null) {
-      return null;
-    }
-    for (final model in models) {
-      if (model.id == id) {
-        return model;
-      }
-    }
-    return null;
   }
 }
 
@@ -4182,8 +3403,8 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                         const SizedBox(width: 8),
                         Text(
                           l10n.failed,
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(
+                          style: Theme.of(context).textTheme.appCompactTitle
+                              .copyWith(
                                 color: Theme.of(
                                   context,
                                 ).colorScheme.onErrorContainer,
@@ -4195,9 +3416,12 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _errorLabel(context, _baseDraft.errorMessage!),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onErrorContainer,
-                        ),
+                        style: Theme.of(context).textTheme.appSupporting
+                            .copyWith(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onErrorContainer,
+                            ),
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -4339,7 +3563,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                 padding: const EdgeInsets.only(top: 8, bottom: 8),
                 child: Text(
                   l10n.bandOrFrequencyRequired,
-                  style: Theme.of(context).textTheme.labelMedium,
+                  style: Theme.of(context).textTheme.appMetadata,
                 ),
               ),
               _TwoColumnFields(
@@ -5221,10 +4445,10 @@ class _SectionTitle extends StatelessWidget {
             '[${number.toString().padLeft(2, '0')}]',
             style: Theme.of(
               context,
-            ).textTheme.labelSmall?.copyWith(color: osc.phosphorDim),
+            ).textTheme.appMicroLabel.copyWith(color: osc.phosphorDim),
           ),
           const SizedBox(width: 10),
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
+          Text(title, style: Theme.of(context).textTheme.appSectionTitle),
         ],
       ),
     );
@@ -5272,7 +4496,7 @@ class _ChoiceCard<T> extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: Theme.of(context).textTheme.appItemTitle,
                       ),
                       const SizedBox(height: 4),
                       Text(subtitle),
@@ -5332,7 +4556,7 @@ class _StatusPanel extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     active ? '${l10n.recording} · $title' : title,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    style: Theme.of(context).textTheme.appControlLabel.copyWith(
                       color: active ? osc.amber : null,
                     ),
                   ),
@@ -5341,7 +4565,7 @@ class _StatusPanel extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 '$minutes:$seconds',
-                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                style: Theme.of(context).textTheme.appDataDisplay.copyWith(
                   color: active ? osc.phosphor : null,
                 ),
               ),
@@ -5395,7 +4619,7 @@ class _TranscriptCard extends ConsumerWidget {
                     padding: const EdgeInsets.all(12),
                     child: Text(
                       context.l10n.noStreamingTranscript,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      style: Theme.of(context).textTheme.appBody.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -5514,10 +4738,9 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
                         const SizedBox(width: 8),
                         Text(
                           _formatSpeechTimeline(segment),
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: textColor,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
+                          style: theme.textTheme.appMetadata
+                              .copyWith(color: textColor)
+                              .appTabular,
                         ),
                       ],
                     ),
@@ -5539,7 +4762,7 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
                             segment.hasText
                                 ? segment.text
                                 : context.l10n.unrecognizedSpeech,
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                            style: theme.textTheme.appBody.copyWith(
                               color: textColor,
                               fontStyle: segment.hasText
                                   ? null
@@ -5553,7 +4776,7 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
                       const SizedBox(height: 6),
                       Text(
                         _errorLabel(context, segment.errorMessage!),
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        style: theme.textTheme.appSupporting.copyWith(
                           color: colors.error,
                         ),
                       ),
@@ -5562,7 +4785,7 @@ class _TranscriptBubbleState extends ConsumerState<_TranscriptBubble> {
                       const SizedBox(height: 6),
                       Text(
                         _playbackError!,
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        style: theme.textTheme.appSupporting.copyWith(
                           color: colors.error,
                         ),
                       ),
@@ -5685,29 +4908,35 @@ class _LogListItem extends StatelessWidget {
                             children: [
                               Text(
                                 log.callsign.value,
-                                style: Theme.of(context).textTheme.titleLarge,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.appSectionTitle.appMonospace,
                               ),
                               const SizedBox(height: 6),
                               Text(
                                 meta.isEmpty ? '—' : meta,
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 12,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .appMetadata
+                                    .appMonospace
+                                    .copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${log.sentRst.value} / ${log.receivedRst.value}',
-                                style: TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 12,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .appMetadata
+                                    .appMonospace
+                                    .copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
                               ),
                             ],
                           ),
@@ -5721,12 +4950,15 @@ class _LogListItem extends StatelessWidget {
                               const SizedBox(height: 8),
                               Text(
                                 _formatLocalDateTime(dateTime),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .appMicroLabel
+                                    .appTabular
+                                    .copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
                               ),
                             ],
                           ],
@@ -5780,17 +5012,19 @@ class _LogbookUploadRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              Text(title, style: Theme.of(context).textTheme.appItemTitle),
               const SizedBox(height: 4),
               Text(
                 _logbookUploadStatusLabel(context, status),
-                style: TextStyle(color: isFailed ? colorScheme.error : null),
+                style: Theme.of(context).textTheme.appBody.copyWith(
+                  color: isFailed ? colorScheme.error : null,
+                ),
               ),
               if (detailText != null && detailText.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   detailText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.appSupporting.copyWith(
                     color: isFailed
                         ? colorScheme.error
                         : colorScheme.onSurfaceVariant,
@@ -5856,13 +5090,422 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final effectiveIconColor = theme.colorScheme.tertiary;
     return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: const Icon(Icons.chevron_right),
+      minTileHeight: 80,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: effectiveIconColor.withAlpha(28),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: effectiveIconColor.withAlpha(72)),
+        ),
+        child: Icon(icon, color: effectiveIconColor),
+      ),
+      title: Text(title, style: theme.textTheme.appItemTitle),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Text(
+          subtitle,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.appBody.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
       onTap: onTap,
+    );
+  }
+}
+
+class _SettingsPageHeader extends StatelessWidget {
+  const _SettingsPageHeader({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: theme.textTheme.appPageTitle),
+        const SizedBox(height: 8),
+        Text(
+          subtitle,
+          style: theme.textTheme.appLead.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      side: BorderSide(color: theme.colorScheme.outlineVariant),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
+          child: Text(title, style: theme.textTheme.appSectionTitle),
+        ),
+        Material(
+          color: theme.colorScheme.surface,
+          shape: shape,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              for (var index = 0; index < children.length; index++) ...[
+                children[index],
+                if (index != children.length - 1)
+                  const Divider(height: 1, indent: 80),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel({
+    required this.child,
+    this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final String? title;
+  final String? subtitle;
+  final Widget child;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      side: BorderSide(color: theme.colorScheme.outlineVariant),
+    );
+    final content = Padding(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null || trailing != null) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title != null)
+                  Expanded(
+                    child: Text(title!, style: theme.textTheme.appSectionTitle),
+                  )
+                else
+                  const Spacer(),
+                ?trailing,
+              ],
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 5),
+              Text(
+                subtitle!,
+                style: theme.textTheme.appBody.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: 18),
+          ],
+          child,
+        ],
+      ),
+    );
+    return Material(
+      color: theme.colorScheme.surface,
+      shape: shape,
+      clipBehavior: Clip.antiAlias,
+      child: onTap == null ? content : InkWell(onTap: onTap, child: content),
+    );
+  }
+}
+
+class _SettingsFormTheme extends StatelessWidget {
+  const _SettingsFormTheme({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: colors.outlineVariant),
+    );
+    return Theme(
+      data: theme.copyWith(
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          filled: true,
+          fillColor: colors.surfaceContainerHighest.withAlpha(90),
+          border: border,
+          enabledBorder: border,
+          disabledBorder: border.copyWith(
+            borderSide: BorderSide(color: colors.outlineVariant.withAlpha(90)),
+          ),
+          focusedBorder: border.copyWith(
+            borderSide: BorderSide(color: colors.primary, width: 2),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 15,
+          ),
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _AssignedModelSummary extends StatelessWidget {
+  const _AssignedModelSummary({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.model,
+  });
+
+  final IconData icon;
+  final String title;
+  final AiModelOption? model;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final selectedModel = model;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 22, color: theme.colorScheme.primary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: theme.textTheme.appCompactTitle),
+              const SizedBox(height: 4),
+              Text(
+                selectedModel?.name ?? context.l10n.noModelAssigned,
+                style:
+                    (selectedModel == null
+                            ? theme.textTheme.appBody
+                            : theme.textTheme.appBody.appMonospace)
+                        .copyWith(
+                          color: selectedModel == null
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.onSurface,
+                        ),
+              ),
+              if (selectedModel != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  selectedModel.providerName,
+                  style: theme.textTheme.appSupporting.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final capability in ModelCapability.values)
+                      if (selectedModel.capabilities.contains(capability))
+                        _CapabilityChip(capability: capability),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConfiguredModelTile extends StatelessWidget {
+  const _ConfiguredModelTile({required this.model, required this.onTap});
+
+  final AiModelOption model;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      key: ValueKey('configured-model-${model.providerId}-${model.id}'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.tertiary.withAlpha(24),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.memory, color: theme.colorScheme.tertiary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    model.name,
+                    style: theme.textTheme.appCompactTitle.appMonospace,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    model.providerName,
+                    style: theme.textTheme.appSupporting.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final capability in ModelCapability.values)
+                        if (model.capabilities.contains(capability))
+                          _CapabilityChip(capability: capability),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderSummaryTile extends StatelessWidget {
+  const _ProviderSummaryTile({
+    required this.provider,
+    required this.modelCount,
+    required this.keyColor,
+    required this.onTap,
+  });
+
+  final ProviderProfile provider;
+  final int modelCount;
+  final Color keyColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = context.l10n;
+    return InkWell(
+      key: ValueKey('provider-summary-${provider.id}'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 56),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.tertiary.withAlpha(24),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.hub_outlined,
+                  color: theme.colorScheme.tertiary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(provider.name, style: theme.textTheme.appCompactTitle),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        provider.type,
+                        if (provider.baseUrl != null) provider.baseUrl!,
+                        '$modelCount ${l10n.savedModels}',
+                      ].join(' · '),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.appSupporting.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Tooltip(
+                message: provider.hasApiKey
+                    ? l10n.apiKeySaved
+                    : l10n.apiKeyNotSaved,
+                child: Icon(
+                  provider.hasApiKey ? Icons.key : Icons.key_off_outlined,
+                  color: provider.hasApiKey
+                      ? keyColor
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -5966,30 +5609,81 @@ class _FetchedModelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Checkbox(
-        value: model.selected,
-        onChanged: (value) => onSelectedChanged(value ?? false),
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(8, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: model.selected
+            ? theme.colorScheme.tertiary.withAlpha(12)
+            : theme.colorScheme.surfaceContainerHighest.withAlpha(45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: model.selected
+              ? theme.colorScheme.tertiary.withAlpha(100)
+              : theme.colorScheme.outlineVariant,
+        ),
       ),
-      title: Text(model.id),
-      subtitle: Wrap(
-        spacing: 8,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (final capability in ModelCapability.values)
-            FilterChip(
-              label: Text(_capabilityLabel(context, capability)),
-              selected: model.capabilities.contains(capability),
-              onSelected: (selected) {
-                final next = {...model.capabilities};
-                if (selected) {
-                  next.add(capability);
-                } else {
-                  next.remove(capability);
-                }
-                onCapabilitiesChanged(next);
-              },
+          Checkbox(
+            value: model.selected,
+            activeColor: theme.colorScheme.tertiary,
+            onChanged: (value) => onSelectedChanged(value ?? false),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  model.id,
+                  style: theme.textTheme.appCompactTitle.appMonospace,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final capability in ModelCapability.values)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 56),
+                        child: FilterChip(
+                          key: ValueKey(
+                            'model-capability-${model.id}-${capability.name}',
+                          ),
+                          label: Text(_capabilityLabel(context, capability)),
+                          visualDensity: VisualDensity.compact,
+                          selectedColor: theme.colorScheme.tertiary.withAlpha(
+                            32,
+                          ),
+                          checkmarkColor: theme.colorScheme.tertiary,
+                          side: BorderSide(
+                            color: model.capabilities.contains(capability)
+                                ? theme.colorScheme.tertiary.withAlpha(110)
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          selected: model.capabilities.contains(capability),
+                          onSelected: (selected) {
+                            final next = {...model.capabilities};
+                            if (selected) {
+                              next.add(capability);
+                            } else {
+                              next.remove(capability);
+                            }
+                            onCapabilitiesChanged(next);
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
+          ),
         ],
       ),
     );
@@ -6020,7 +5714,7 @@ class _CardSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: Theme.of(context).textTheme.appSectionTitle,
                   ),
                 ),
                 ?trailing,
@@ -6128,7 +5822,10 @@ class _RetainedTranscriptCard extends ConsumerWidget {
         title: Row(
           children: [
             Expanded(
-              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.appSectionTitle,
+              ),
             ),
             if (onDelete != null)
               IconButton(
@@ -6205,7 +5902,12 @@ class _RetainedAudioCard extends StatelessWidget {
         ),
         if (errorText != null) ...[
           const SizedBox(height: 8),
-          Text(errorText!, style: TextStyle(color: colorScheme.error)),
+          Text(
+            errorText!,
+            style: Theme.of(
+              context,
+            ).textTheme.appSupporting.copyWith(color: colorScheme.error),
+          ),
         ],
       ],
     );
@@ -6229,7 +5931,10 @@ class _DataCountTile extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon),
       title: Text(label),
-      trailing: Text('$count', style: Theme.of(context).textTheme.titleMedium),
+      trailing: Text(
+        '$count',
+        style: Theme.of(context).textTheme.appItemTitle.appTabular,
+      ),
     );
   }
 }
@@ -6278,7 +5983,9 @@ class _StatusChip extends StatelessWidget {
       label: Text(_statusLabel(context, status)),
       side: BorderSide(color: color),
       backgroundColor: color.withAlpha(20),
-      labelStyle: TextStyle(color: color, fontWeight: FontWeight.bold),
+      labelStyle: Theme.of(
+        context,
+      ).textTheme.appMetadata.copyWith(color: color),
     );
   }
 }
@@ -6307,53 +6014,71 @@ class _ModelAssignmentSection extends StatelessWidget {
     final effectiveModelId = models.any((model) => model.id == selectedModelId)
         ? selectedModelId
         : null;
-    return _CardSection(
+    AiModelOption? selectedModel;
+    for (final model in models) {
+      if (model.id == effectiveModelId) {
+        selectedModel = model;
+        break;
+      }
+    }
+    return _SettingsPanel(
       title: title,
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: selectedProviderId,
-          decoration: InputDecoration(
-            labelText: context.l10n.providerManagement,
-          ),
-          items: [
-            for (final provider in providers)
-              DropdownMenuItem(value: provider.id, child: Text(provider.name)),
-          ],
-          onChanged: providers.isEmpty ? null : onProviderChanged,
-        ),
-        const SizedBox(height: 12),
-        if (models.isEmpty)
-          Row(
-            children: [
-              const Icon(Icons.info_outline),
-              const SizedBox(width: 12),
-              Expanded(child: Text(context.l10n.noModelsSaved)),
-            ],
-          ),
-        if (models.isNotEmpty)
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           DropdownButtonFormField<String>(
-            initialValue: effectiveModelId,
+            initialValue: selectedProviderId,
             isExpanded: true,
-            decoration: InputDecoration(labelText: context.l10n.modelName),
+            decoration: InputDecoration(
+              labelText: context.l10n.providerManagement,
+            ),
             items: [
-              for (final model in models)
+              for (final provider in providers)
                 DropdownMenuItem(
-                  value: model.id,
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 2,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(model.name),
-                      for (final capability in model.capabilities)
-                        _CapabilityChip(capability: capability),
-                    ],
-                  ),
+                  value: provider.id,
+                  child: Text(provider.name, overflow: TextOverflow.ellipsis),
                 ),
             ],
-            onChanged: onChanged,
+            onChanged: providers.isEmpty ? null : onProviderChanged,
           ),
-      ],
+          const SizedBox(height: 14),
+          if (models.isEmpty)
+            Row(
+              children: [
+                const Icon(Icons.info_outline),
+                const SizedBox(width: 12),
+                Expanded(child: Text(context.l10n.noModelsSaved)),
+              ],
+            ),
+          if (models.isNotEmpty) ...[
+            DropdownButtonFormField<String>(
+              initialValue: effectiveModelId,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: context.l10n.modelName),
+              items: [
+                for (final model in models)
+                  DropdownMenuItem(
+                    value: model.id,
+                    child: Text(model.name, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: onChanged,
+            ),
+            if (selectedModel != null) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final capability in ModelCapability.values)
+                    if (selectedModel.capabilities.contains(capability))
+                      _CapabilityChip(capability: capability),
+                ],
+              ),
+            ],
+          ],
+        ],
+      ),
     );
   }
 }
@@ -6446,7 +6171,7 @@ class _TopNoticeState extends State<_TopNotice>
                   ),
                   child: Text(
                     widget.message,
-                    style: TextStyle(
+                    style: theme.textTheme.appBody.copyWith(
                       color: theme.colorScheme.onPrimaryContainer,
                     ),
                   ),
@@ -6467,9 +6192,17 @@ class _CapabilityChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = _capabilityColor(context);
     return Chip(
       label: Text(_capabilityLabel(context, capability)),
       visualDensity: VisualDensity.compact,
+      backgroundColor: color.withAlpha(18),
+      side: BorderSide(color: color.withAlpha(88)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      labelStyle: Theme.of(
+        context,
+      ).textTheme.appMicroLabel.copyWith(color: color),
+      padding: const EdgeInsets.symmetric(horizontal: 2),
     );
   }
 }
@@ -6686,13 +6419,13 @@ class _FieldReviewFrame extends StatelessWidget {
               context.l10n.reviewRequired,
               style: Theme.of(
                 context,
-              ).textTheme.labelMedium?.copyWith(color: colors.error),
+              ).textTheme.appMetadata.copyWith(color: colors.error),
             ),
             if (source?.isNotEmpty == true) ...[
               const SizedBox(height: 4),
               Text(
                 '${context.l10n.sourceExcerpt}: $source',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: Theme.of(context).textTheme.appSupporting,
               ),
             ],
             Align(
@@ -7003,6 +6736,9 @@ String _capabilityLabel(BuildContext context, ModelCapability capability) {
     ModelCapability.structuring => l10n.structuring,
   };
 }
+
+Color _capabilityColor(BuildContext context) =>
+    Theme.of(context).colorScheme.tertiary;
 
 String _statusLabel(BuildContext context, LogStatus status) {
   final l10n = context.l10n;

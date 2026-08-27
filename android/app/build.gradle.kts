@@ -47,7 +47,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders["appLabel"] = "QSO Scribe"
     }
 
     signingConfigs {
@@ -65,7 +64,6 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            manifestPlaceholders["appLabel"] = "QSO Scribe Dev"
         }
 
         release {

@@ -4,6 +4,8 @@
 
 面向业余无线电用户的移动端 QSO 记录助手。通过录音、语音转写和 AI 结构化，减少户外与移动通联时的手工输入。
 
+作者呼号：**BH8HGF**
+
 ## 应用截图
 
 | 通联录音 | 日志筛选 | 应用设置 |
@@ -82,26 +84,26 @@ flutter build apk --debug --target-platform android-arm64
 
 ## 发布 Android Release
 
-正式发布由 GitHub Actions 构建。发布前更新 `RELEASE_NOTES.md` 和 `pubspec.yaml`。
+正式发布由 GitHub Actions 构建。发布前更新 [`CHANGELOG.md`](./CHANGELOG.md)、`RELEASE_NOTES.md` 和 `pubspec.yaml`。
 
 Tag 必须与 `pubspec.yaml` 的 `version` 完全一致：
 
 ```text
-version: 0.1.5+6
-tag: v0.1.5+6
+version: 0.1.6+7
+tag: v0.1.6+7
 ```
 
 ```bash
 git push origin main
-git push origin v0.1.5+6
+git push origin v0.1.6+7
 ```
 
-`+6` 是 Android 内部构建号。应用和 GitHub Release 标题仅展示 `0.1.5`。
+`+7` 是 Android 内部构建号。应用和 GitHub Release 标题仅展示 `0.1.6`。
 
 发布资产命名为：
 
 ```text
-qso-scribe-app-0.1.5-build6-android.apk
+qso-scribe-app-0.1.6-build7-android.apk
 ```
 
 ## 项目结构
