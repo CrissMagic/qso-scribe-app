@@ -89,21 +89,21 @@ flutter build apk --debug --target-platform android-arm64
 Tag 必须与 `pubspec.yaml` 的 `version` 完全一致：
 
 ```text
-version: 0.1.7+8
-tag: v0.1.7+8
+version: 0.1.8+9
+tag: v0.1.8+9
 ```
 
 ```bash
 git push origin main
-git push origin v0.1.7+8
+git push origin v0.1.8+9
 ```
 
-`+8` 是 Android 内部构建号。应用和 GitHub Release 标题仅展示 `0.1.7`。
+`+9` 是 Android 内部构建号。应用和 GitHub Release 标题仅展示 `0.1.8`。
 
 发布资产命名为：
 
 ```text
-qso-scribe-app-0.1.7-build8-android.apk
+qso-scribe-app-0.1.8-build9-android.apk
 ```
 
 ## 项目结构
