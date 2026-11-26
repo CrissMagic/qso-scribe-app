@@ -46,18 +46,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get transcriptionMode => 'Transcription mode';
 
   @override
-  String get streamingMode => 'Real-time streaming';
+  String get streamingMode => 'Real-time transcription';
 
   @override
   String get streamingModeDesc =>
-      'Transcribe audio during the QSO when the provider supports streaming.';
+      'Show text during the QSO with a model that supports real-time transcription.';
 
   @override
-  String get afterQsoMode => 'Recognize after QSO';
+  String get afterQsoMode => 'Transcribe after recording';
 
   @override
   String get afterQsoModeDesc =>
-      'Record first, then transcribe and structure after the QSO ends.';
+      'Record first. After you stop, the app transcribes the audio and prepares a QSO draft.';
 
   @override
   String get failureHandling => 'Failure handling';
@@ -67,14 +67,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get showErrorsDesc =>
-      'Surface transcription or structuring errors during the workflow.';
+      'Show an error if transcription or QSO structuring fails.';
 
   @override
-  String get degradeSilently => 'Degrade silently';
+  String get degradeSilently => 'Keep partial transcript';
 
   @override
   String get degradeSilentlyDesc =>
-      'Keep partial transcript and let the operator finish the contact.';
+      'Keep any text already transcribed and continue the QSO when possible.';
 
   @override
   String get completeSetup => 'Complete setup';
@@ -108,7 +108,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get liveTranscript => 'Live transcript';
 
   @override
-  String get recordingPlaceholder => 'Waiting for audio input...';
+  String get recordingPlaceholder => 'Waiting for audio input…';
 
   @override
   String get draftEntry => 'Draft entry';
@@ -169,10 +169,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Unreviewed fields remain; this QSO cannot be saved as confirmed';
 
   @override
-  String get currentStructuredDraft => 'Current structured draft';
+  String get currentStructuredDraft => 'Current QSO draft';
 
   @override
-  String get structuringInProgress => 'Updating structured fields…';
+  String get structuringInProgress => 'Updating QSO draft…';
 
   @override
   String get editField => 'Edit field';
@@ -261,7 +261,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get format => 'Format';
 
   @override
-  String get rawTranscript => 'Raw text';
+  String get rawTranscript => 'Raw transcript text';
 
   @override
   String get selectedForExport => 'QSOs selected for export';
@@ -358,7 +358,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioLog => 'Audio log';
 
   @override
-  String get originalTranscript => 'Original transcript';
+  String get originalTranscript => 'Raw transcript';
 
   @override
   String get confirmAndSave => 'Confirm and save';
@@ -490,7 +490,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get streamingConnectionFailed =>
-      'The real-time transcription connection failed, so recording did not start. Switch to recognition after QSO manually.';
+      'Real-time transcription could not connect. Recording did not start. Switch to transcription after recording and try again.';
 
   @override
   String get streamingConnectionClosed =>
@@ -550,6 +550,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get clearFilters => 'Clear filters';
+
+  @override
+  String get noLogs => 'No QSO logs yet. Import audio or text to get started.';
 
   @override
   String get noLogsMatchFilters => 'No logs match the current filters';
@@ -866,7 +869,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get paste => 'Paste';
 
   @override
-  String get transcriptionModelAfter => 'After-QSO transcription model';
+  String get transcriptionModelAfter =>
+      'Model for transcription after recording';
 
   @override
   String get transcriptionModelStreaming => 'Real-time transcription model';
@@ -899,10 +903,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearRecordsConfirm => 'Clear all token usage records?';
 
   @override
-  String get taskTranscription => 'Transcription';
+  String get taskTranscription => 'Transcribe after recording';
 
   @override
-  String get taskStructuring => 'Structuring';
+  String get taskStructuring => 'QSO structuring';
 
   @override
   String get taskStreaming => 'Real-time';
@@ -1017,7 +1021,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recording => 'Recording';
 
   @override
-  String get afterTranscribe => 'After QSO';
+  String get afterTranscribe => 'After recording';
 
   @override
   String get realtimeTranscribe => 'Real-time';
@@ -1030,6 +1034,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiModels => 'AI models';
+
+  @override
+  String get transcriptionAndStructuring => 'Transcription and structuring';
 
   @override
   String get aiModelsDesc => 'Provider and model configuration';
@@ -1048,7 +1055,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get afterQsoRecorderHint =>
-      'Recording in progress. Audio will be transcribed and structured after you stop.';
+      'When you stop recording, the app transcribes the audio and prepares a QSO draft.';
 
   @override
   String get streamingStoppedHint => 'Recording stopped';
@@ -1143,4 +1150,36 @@ class AppLocalizationsEn extends AppLocalizations {
   ) {
     return 'The current ASR model ($provider) may not support .$format format. Supported: $supported. Continue anyway?';
   }
+
+  @override
+  String get fmoRelay => 'FMO relay';
+
+  @override
+  String get startRecording => 'Start recording';
+
+  @override
+  String get endRecording => 'End recording';
+
+  @override
+  String get waitingToRecord => 'Waiting to record';
+
+  @override
+  String get startingRecording => 'Starting recording…';
+
+  @override
+  String get recordingRecognition => 'Recording ended. Processing…';
+
+  @override
+  String get fmoOptionalFields =>
+      'Frequency, band, mode and RST are optional for FMO records.';
+
+  @override
+  String get fmoAdifExcluded =>
+      'FMO records are available as CSV or transcript text.';
+
+  @override
+  String get fmoSaveDraft => 'Save draft';
+
+  @override
+  String get fmoRadioFields => 'Optional radio fields';
 }

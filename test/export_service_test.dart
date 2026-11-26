@@ -6,6 +6,27 @@ import 'package:qso_scribe_app/src/domain/app_models.dart';
 
 void main() {
   test(
+    'FMO relay metadata exports to CSV and text and is excluded from ADIF',
+    () async {
+      final fmo = _qso(
+        id: 'fmo',
+        callsign: 'K1ABC',
+      ).copyWith(fmoRelayUid: 'relay-42', fmoRelayName: 'Test relay');
+      final service = ExportService(_FakeQsoRepository([fmo]));
+      const filter = ExportFilter();
+
+      expect((await service.exportAdif(filter)).qsoIds, isEmpty);
+      expect(
+        (await service.exportCsv(filter)).content,
+        contains('"Test relay","relay-42"'),
+      );
+      expect(
+        (await service.exportRawTranscript(filter)).content,
+        contains('FMO relay: Test relay'),
+      );
+    },
+  );
+  test(
     'generated export reports exactly the persisted QSO ids it contains',
     () async {
       final service = ExportService(

@@ -371,6 +371,8 @@ WHERE (q.raw_transcript IS NOT NULL AND q.raw_transcript != '')
       'callsign_user_edited': encodeBool(qso.callsign.userEdited),
       'callsign_source_text': qso.callsign.sourceText,
       'qso_datetime': qso.dateTime.value?.toUtc().toIso8601String(),
+      'fmo_relay_uid': qso.fmoRelayUid,
+      'fmo_relay_name': qso.fmoRelayName,
       'band': qso.band.value.trim(),
       'frequency': qso.frequency.value.trim(),
       'mode': qso.mode.value.trim().toUpperCase(),
@@ -423,6 +425,8 @@ QsoDraft decodeQsoRow(
   return QsoDraft(
     id: row['id'] as String,
     status: status,
+    fmoRelayUid: row['fmo_relay_uid'] as String?,
+    fmoRelayName: row['fmo_relay_name'] as String?,
     callsign: _decodeQsoField(
       value: row['callsign'] as String,
       metadata: _metadataFor(metadata, 'callsign'),

@@ -85,7 +85,7 @@ class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
             const SizedBox(height: 8),
             Text(l10n.firstRunSubtitle),
             const SizedBox(height: 24),
-            _SectionTitle(number: 1, title: l10n.callsignSetup),
+            _SectionTitle(title: l10n.callsignSetup),
             Text(l10n.callsignSetupDesc),
             const SizedBox(height: 12),
             TextField(
@@ -98,7 +98,7 @@ class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            _SectionTitle(number: 2, title: l10n.language),
+            _SectionTitle(title: l10n.language),
             _ChoiceCard<AppLocaleMode>(
               value: AppLocaleMode.system,
               groupValue: localeMode,
@@ -127,7 +127,7 @@ class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
                   ref.read(appSettingsProvider.notifier).setLocaleMode(value),
             ),
             const SizedBox(height: 24),
-            _SectionTitle(number: 3, title: l10n.transcriptionMode),
+            _SectionTitle(title: l10n.transcriptionMode),
             _ChoiceCard<TranscriptionMode>(
               value: TranscriptionMode.streaming,
               groupValue: transcriptionMode,
@@ -149,7 +149,7 @@ class _FirstRunSetupScreenState extends ConsumerState<FirstRunSetupScreen> {
                   .setTranscriptionMode(value),
             ),
             const SizedBox(height: 24),
-            _SectionTitle(number: 4, title: l10n.failureHandling),
+            _SectionTitle(title: l10n.failureHandling),
             _ChoiceCard<FailureHandling>(
               value: FailureHandling.alert,
               groupValue: failureHandling,
@@ -200,6 +200,8 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
+  final _openedTabs = {0};
+  bool _recordLocked = false;
   bool _startupUpdateCheckStarted = false;
 
   @override
@@ -246,6 +248,9 @@ class _MainShellState extends ConsumerState<MainShell> {
           action: SnackBarAction(
             label: l10n.viewUpdate,
             onPressed: () {
+              if (_isRecordingFlowLocked(ref.read(recordingSessionProvider))) {
+                return;
+              }
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const SoftwareUpdateScreen(),
@@ -260,43 +265,62 @@ class _MainShellState extends ConsumerState<MainShell> {
     }
   }
 
+  bool _isRecordingFlowLocked(RecordingSessionState recorder) =>
+      _recordLocked || recorder.isRecording || recorder.isProcessing;
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final recorder = ref.watch(recordingSessionProvider);
+    final locked = _isRecordingFlowLocked(recorder);
     final pages = [
-      const RecordScreen(),
-      const LogsScreen(),
-      const SettingsScreen(),
+      RecordScreen(
+        onLockChanged: (value) => setState(() => _recordLocked = value),
+      ),
+      _openedTabs.contains(1) ? const LogsScreen() : const SizedBox.shrink(),
+      _openedTabs.contains(2)
+          ? const SettingsScreen()
+          : const SizedBox.shrink(),
     ];
 
-    return Scaffold(
-      body: pages[_index],
-      bottomNavigationBar: NavigationBar(
-        height: 64,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-        selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: [
-          NavigationDestination(
-            icon: const Icon(Icons.mic),
-            label: l10n.record,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.history),
-            label: l10n.logs,
-          ),
-          NavigationDestination(
-            icon: const Icon(Icons.settings),
-            label: l10n.settings,
-          ),
-        ],
+    return PopScope(
+      canPop: !locked,
+      child: Scaffold(
+        body: IndexedStack(index: _index, children: pages),
+        bottomNavigationBar: NavigationBar(
+          height: AppLayout.navigationHeight,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          selectedIndex: _index,
+          onDestinationSelected: locked
+              ? null
+              : (value) => setState(() {
+                  _index = value;
+                  _openedTabs.add(value);
+                }),
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.mic),
+              label: l10n.record,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.history),
+              label: l10n.logs,
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.settings),
+              label: l10n.settings,
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class RecordScreen extends ConsumerStatefulWidget {
-  const RecordScreen({super.key});
+  const RecordScreen({super.key, this.onLockChanged});
+
+  final ValueChanged<bool>? onLockChanged;
 
   @override
   ConsumerState<RecordScreen> createState() => _RecordScreenState();
@@ -306,6 +330,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late int _activeTabIndex;
+  bool _finalizing = false;
 
   @override
   void initState() {
@@ -326,7 +351,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
     // 录音/处理中禁止切换转写模式：否则停止按钮会落到错误的 tab，
     // 导致录音模式与停止处理不匹配（如 afterQso 录音被按流式停止）。
     final session = ref.read(recordingSessionProvider);
-    if (session.isRecording || session.isProcessing) {
+    if (session.isRecording || session.isProcessing || _finalizing) {
       _tabController.index = _activeTabIndex;
       return;
     }
@@ -366,7 +391,6 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
           ),
         );
     final transcript = capture.transcriptSegments;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.appTitle),
@@ -375,32 +399,57 @@ class _RecordScreenState extends ConsumerState<RecordScreen>
           tabs: [
             Tab(text: l10n.afterTranscribe),
             Tab(text: l10n.realtimeTranscribe),
-            // 比赛模式暂时隐藏
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          // 后置转写
-          _AfterQsoTab(session: session, capture: capture),
-          // 实时转写
+          _AfterQsoTab(
+            session: session,
+            capture: capture,
+            onFinalize: _finalize,
+            finalizing: _finalizing,
+          ),
           _StreamingTab(
             session: session,
             transcript: transcript,
             capture: capture,
+            onFinalize: _finalize,
+            finalizing: _finalizing,
           ),
         ],
       ),
     );
   }
+
+  Future<void> _finalize(Future<QsoDraft> Function() process) async {
+    setState(() => _finalizing = true);
+    widget.onLockChanged?.call(true);
+    try {
+      final draft = await process();
+      if (mounted) await _handleCompletedQso(context, ref, draft);
+    } finally {
+      if (mounted) {
+        setState(() => _finalizing = false);
+        widget.onLockChanged?.call(false);
+      }
+    }
+  }
 }
 
 class _AfterQsoTab extends ConsumerWidget {
-  const _AfterQsoTab({required this.session, required this.capture});
+  const _AfterQsoTab({
+    required this.session,
+    required this.capture,
+    required this.onFinalize,
+    required this.finalizing,
+  });
 
   final RecordingSessionState session;
   final QsoCaptureState capture;
+  final Future<void> Function(Future<QsoDraft> Function()) onFinalize;
+  final bool finalizing;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -410,11 +459,7 @@ class _AfterQsoTab extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusPanel(
-            title: l10n.afterQsoMode,
-            elapsed: session.elapsed,
-            active: session.isRecording,
-          ),
+          _StatusPanel(session: session, finalizing: finalizing),
           if (session.errorMessage != null) ...[
             const SizedBox(height: 8),
             _PlaceholderCard(
@@ -438,8 +483,9 @@ class _AfterQsoTab extends ConsumerWidget {
       bottomNavigationBar: _RecordControls(
         session: session,
         mode: TranscriptionMode.afterQso,
-        onStopped: (audioPath) async {
-          final generatedDraft = await ref
+        finalizing: finalizing,
+        onStopped: (audioPath) => onFinalize(() {
+          return ref
               .read(qsoCaptureProvider.notifier)
               .finishQso(
                 audioPath: audioPath,
@@ -447,10 +493,7 @@ class _AfterQsoTab extends ConsumerWidget {
                 mode: TranscriptionMode.afterQso,
                 failureHandling: ref.read(failureHandlingProvider),
               );
-          if (context.mounted) {
-            await _handleCompletedQso(context, ref, generatedDraft);
-          }
-        },
+        }),
       ),
     );
   }
@@ -461,11 +504,15 @@ class _StreamingTab extends ConsumerWidget {
     required this.session,
     required this.transcript,
     required this.capture,
+    required this.onFinalize,
+    required this.finalizing,
   });
 
   final RecordingSessionState session;
   final List<TranscriptSegment> transcript;
   final QsoCaptureState capture;
+  final Future<void> Function(Future<QsoDraft> Function()) onFinalize;
+  final bool finalizing;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -475,11 +522,7 @@ class _StreamingTab extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _StatusPanel(
-            title: l10n.streamingMode,
-            elapsed: session.elapsed,
-            active: session.isRecording,
-          ),
+          _StatusPanel(session: session, finalizing: finalizing),
           if (session.errorMessage != null) ...[
             const SizedBox(height: 8),
             _PlaceholderCard(
@@ -513,17 +556,15 @@ class _StreamingTab extends ConsumerWidget {
       bottomNavigationBar: _RecordControls(
         session: session,
         mode: TranscriptionMode.streaming,
-        onStopped: (audioPath) async {
-          final generatedDraft = await ref
+        finalizing: finalizing,
+        onStopped: (audioPath) => onFinalize(() {
+          return ref
               .read(qsoCaptureProvider.notifier)
               .stopQsoStreaming(
                 audioPath: audioPath,
                 startedAt: session.startedAt,
               );
-          if (context.mounted) {
-            await _handleCompletedQso(context, ref, generatedDraft);
-          }
-        },
+        }),
       ),
     );
   }
@@ -813,12 +854,12 @@ class _RealtimeDraftFieldTile extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final sourceText = item.field.sourceText?.trim();
     return Container(
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: AppLayout.smallGap),
       decoration: BoxDecoration(
-        color: item.needsReview ? colors.errorContainer : null,
-        borderRadius: BorderRadius.circular(12),
+        color: item.needsReview ? colors.secondaryContainer : null,
+        borderRadius: AppLayout.panelRadius,
         border: Border.all(
-          color: item.needsReview ? colors.error : colors.outlineVariant,
+          color: item.needsReview ? colors.secondary : colors.outlineVariant,
         ),
       ),
       child: ListTile(
@@ -831,9 +872,9 @@ class _RealtimeDraftFieldTile extends StatelessWidget {
             if (item.needsReview)
               Text(
                 context.l10n.reviewRequired,
-                style: Theme.of(
-                  context,
-                ).textTheme.appMetadata.copyWith(color: colors.error),
+                style: Theme.of(context).textTheme.appMetadata.copyWith(
+                  color: colors.onSecondaryContainer,
+                ),
               ),
             if (item.needsReview && sourceText?.isNotEmpty == true)
               Text(
@@ -923,10 +964,12 @@ class _RecordControls extends ConsumerWidget {
     required this.session,
     required this.mode,
     required this.onStopped,
+    required this.finalizing,
   });
 
   final RecordingSessionState session;
   final TranscriptionMode mode;
+  final bool finalizing;
 
   /// 停止录音后的回调（参数为录音文件路径）。
   final Future<void> Function(String? audioPath) onStopped;
@@ -939,14 +982,19 @@ class _RecordControls extends ConsumerWidget {
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        padding: const EdgeInsets.fromLTRB(
+          AppLayout.gutter,
+          AppLayout.smallGap,
+          AppLayout.gutter,
+          AppLayout.gutter,
+        ),
         child: FilledButton.icon(
           style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(64),
+            minimumSize: const Size.fromHeight(AppLayout.recordingActionHeight),
             backgroundColor: stopping ? colors.error : colors.primary,
             foregroundColor: stopping ? colors.onError : colors.onPrimary,
           ),
-          onPressed: session.isProcessing
+          onPressed: session.isProcessing || finalizing
               ? null
               : () async {
                   final recorder = ref.read(recordingSessionProvider.notifier);
@@ -962,7 +1010,7 @@ class _RecordControls extends ConsumerWidget {
                   }
                 },
           icon: Icon(stopping ? Icons.stop : Icons.mic),
-          label: Text(stopping ? l10n.endQso : l10n.startQso),
+          label: Text(stopping ? l10n.endRecording : l10n.startRecording),
         ),
       ),
     );
@@ -1034,19 +1082,17 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       appBar: AppBar(
         title: Text(l10n.logs),
         actions: [
-          IconButton(
-            tooltip: l10n.import,
+          TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const ImportScreen()),
             ),
-            icon: const Icon(Icons.file_download),
+            child: Text(l10n.import),
           ),
-          IconButton(
-            tooltip: l10n.export,
+          TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const ExportScreen()),
             ),
-            icon: const Icon(Icons.file_upload),
+            child: Text(l10n.export),
           ),
         ],
       ),
@@ -1093,11 +1139,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
-                          height: 40,
+                          height: AppLayout.controlHeight,
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 40,
+                                width: AppLayout.controlHeight,
                                 child: IconButton(
                                   tooltip: l10n.filter,
                                   padding: EdgeInsets.zero,
@@ -1156,7 +1202,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
                         children: [
                           _PlaceholderCard(
                             title: l10n.logs,
-                            text: l10n.noLogsMatchFilters,
+                            text: allLogs.isEmpty
+                                ? l10n.noLogs
+                                : l10n.noLogsMatchFilters,
                             icon: Icons.info_outline,
                           ),
                           const SizedBox(height: 12),
@@ -1290,7 +1338,6 @@ class _LogsScreenState extends ConsumerState<LogsScreen> {
       child: FilterChip(
         label: Text(label),
         selected: selected,
-        showCheckmark: false,
         onSelected: (_) => onSelected(),
       ),
     );
@@ -1515,6 +1562,11 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   setState(() => _format = selection.first);
                 },
               ),
+              if (_format == _ExportFormat.adif && logs.any((qso) => qso.isFmo))
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(l10n.fmoAdifExcluded),
+                ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1625,7 +1677,8 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     final filter = _currentFilter();
     final band = filter.band;
     final mode = filter.mode;
-    return (filter.status == null || draft.status == filter.status) &&
+    return (_format != _ExportFormat.adif || !draft.isFmo) &&
+        (filter.status == null || draft.status == filter.status) &&
         (filter.from == null ||
             (draft.dateTime.value != null &&
                 !draft.dateTime.value!.isBefore(filter.from!))) &&
@@ -1745,17 +1798,19 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final language = switch (ref.watch(localeModeProvider)) {
+      AppLocaleMode.system => l10n.followSystem,
+      AppLocaleMode.zh => l10n.simplifiedChinese,
+      AppLocaleMode.en => l10n.english,
+    };
 
     return Scaffold(
       appBar: AppBar(title: Text(l10n.settings)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        padding: AppLayout.settingsPagePadding,
         children: [
-          _SettingsPageHeader(
-            title: l10n.settings,
-            subtitle: l10n.settingsOverviewDesc,
-          ),
-          const SizedBox(height: 24),
+          _SettingsPageHeader(subtitle: l10n.settingsOverviewDesc),
+          const SizedBox(height: AppLayout.sectionGap),
           _SettingsGroup(
             title: l10n.stationSettings,
             children: [
@@ -1781,9 +1836,9 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppLayout.sectionGap),
           _SettingsGroup(
-            title: l10n.aiModels,
+            title: l10n.transcriptionAndStructuring,
             children: [
               _SettingsTile(
                 icon: Icons.auto_awesome,
@@ -1797,7 +1852,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppLayout.sectionGap),
           _SettingsGroup(
             title: l10n.appSettings,
             children: [
@@ -1814,7 +1869,7 @@ class SettingsScreen extends ConsumerWidget {
               _SettingsTile(
                 icon: Icons.language,
                 title: l10n.language,
-                subtitle: l10n.followSystemDesc,
+                subtitle: language,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const LanguageSettingsScreen(),
@@ -3287,6 +3342,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   String? _audioPlaybackError;
   bool _retrying = false;
   bool _qrzUploading = false;
+  bool _savingFmo = false;
   late final Future<void> Function() _stopAudioPlayback;
 
   @override
@@ -3338,12 +3394,14 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final qsoId = _baseDraft.id;
-    final uploadHasUnreviewedFields = _buildDraft().hasUnreviewedFields;
+    final current = _buildDraft();
+    final uploadHasUnreviewedFields = current.hasUnreviewedFields;
     final uploadHasEligibleStatus =
         status == LogStatus.confirmed || status == LogStatus.exported;
+    final fmo = _baseDraft.isFmo;
     final bandOrFrequencyMissing =
-        _band == null && _frequencyController.text.trim().isEmpty;
-    final qrzUploadState = qsoId == null
+        !fmo && _band == null && _frequencyController.text.trim().isEmpty;
+    final qrzUploadState = qsoId == null || fmo
         ? null
         : ref.watch(qrzUploadProvider(qsoId));
 
@@ -3352,7 +3410,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
-          if (status == LogStatus.exported)
+          if (fmo || status == LogStatus.exported)
             Align(
               alignment: Alignment.centerLeft,
               child: _StatusChip(status: status),
@@ -3450,7 +3508,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
               icon: Icons.info_outline,
             ),
           ],
-          if (qsoId != null) ...[
+          if (qsoId != null && !fmo) ...[
             const SizedBox(height: 16),
             _CardSection(
               title: l10n.logbookUploads,
@@ -3499,6 +3557,15 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
           _CardSection(
             title: l10n.contactInfo,
             children: [
+              if (fmo)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.radio_outlined),
+                  title: Text(l10n.fmoRelay),
+                  subtitle: Text(
+                    _baseDraft.fmoRelayName ?? _baseDraft.fmoRelayUid!,
+                  ),
+                ),
               _ReviewField(
                 label: l10n.callsign,
                 controller: _callsignController,
@@ -3559,100 +3626,24 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 8),
-                child: Text(
-                  l10n.bandOrFrequencyRequired,
-                  style: Theme.of(context).textTheme.appMetadata,
-                ),
-              ),
-              _TwoColumnFields(
-                left: _FieldReviewFrame(
-                  needsReview: _needsStringReview(
-                    QsoFieldKey.band,
-                    _baseDraft.band,
-                    requiredMissing: bandOrFrequencyMissing,
-                  ),
-                  sourceText: _baseDraft.band.sourceText,
-                  onReviewed: () => _markFieldReviewed(QsoFieldKey.band),
-                  child: _BandDropdown(
-                    value: _band,
-                    helperText: _bandSuggested ? l10n.suggestedBand : null,
-                    onChanged: (value) => setState(() {
-                      _editedFields.add(QsoFieldKey.band);
-                      _band = value;
-                      _bandSuggested = false;
-                    }),
-                  ),
-                ),
-                right: _FieldReviewFrame(
-                  needsReview: _needsStringReview(
-                    QsoFieldKey.frequency,
-                    _baseDraft.frequency,
-                    requiredMissing: bandOrFrequencyMissing,
-                  ),
-                  sourceText: _baseDraft.frequency.sourceText,
-                  onReviewed: () => _markFieldReviewed(QsoFieldKey.frequency),
-                  child: TextFormField(
-                    controller: _frequencyController,
-                    decoration: InputDecoration(
-                      labelText: l10n.frequency,
-                      errorText: _frequencyError,
-                      suffixText: 'MHz',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    onChanged: (value) => _handleFrequencyChanged(value, l10n),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _FieldReviewFrame(
-                needsReview: _needsStringReview(
-                  QsoFieldKey.mode,
-                  _baseDraft.mode,
-                  requiredMissing: _mode == null,
-                ),
-                sourceText: _baseDraft.mode.sourceText,
-                onReviewed: () => _markFieldReviewed(QsoFieldKey.mode),
-                child: _ModeDropdown(
-                  value: _mode,
-                  onChanged: (value) => setState(() {
-                    _editedFields.add(QsoFieldKey.mode);
-                    _mode = value;
-                  }),
-                ),
-              ),
-              const SizedBox(height: 12),
-              _TwoColumnFields(
-                left: _ReviewField(
-                  label: l10n.sentRst,
-                  controller: _sentRstController,
-                  requiredField: true,
-                  needsReview: _needsStringReview(
-                    QsoFieldKey.sentRst,
-                    _baseDraft.sentRst,
-                    requiredMissing: _sentRstController.text.trim().isEmpty,
-                  ),
-                  sourceText: _baseDraft.sentRst.sourceText,
-                  onReviewed: () => _markFieldReviewed(QsoFieldKey.sentRst),
-                  onChanged: (_) => _markFieldEdited(QsoFieldKey.sentRst),
-                ),
-                right: _ReviewField(
-                  label: l10n.receivedRst,
-                  controller: _receivedRstController,
-                  requiredField: true,
-                  needsReview: _needsStringReview(
-                    QsoFieldKey.receivedRst,
-                    _baseDraft.receivedRst,
-                    requiredMissing: _receivedRstController.text.trim().isEmpty,
-                  ),
-                  sourceText: _baseDraft.receivedRst.sourceText,
-                  onReviewed: () => _markFieldReviewed(QsoFieldKey.receivedRst),
-                  onChanged: (_) => _markFieldEdited(QsoFieldKey.receivedRst),
-                ),
-              ),
+              if (fmo)
+                ExpansionTile(
+                  key: const PageStorageKey('fmo-optional-radio-fields'),
+                  title: Text(l10n.fmoRadioFields),
+                  initiallyExpanded:
+                      _baseDraft.band.needsReview && _band != null ||
+                      _baseDraft.frequency.needsReview &&
+                          _frequencyController.text.isNotEmpty ||
+                      _baseDraft.mode.needsReview && _mode != null ||
+                      _baseDraft.sentRst.needsReview &&
+                          _sentRstController.text.isNotEmpty ||
+                      _baseDraft.receivedRst.needsReview &&
+                          _receivedRstController.text.isNotEmpty,
+                  tilePadding: EdgeInsets.zero,
+                  children: _radioFields(context, fmo, bandOrFrequencyMissing),
+                )
+              else
+                ..._radioFields(context, fmo, bandOrFrequencyMissing),
             ],
           ),
           const SizedBox(height: 16),
@@ -3806,48 +3797,216 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: FilledButton.icon(
-            onPressed: () async {
-              if (!_validateFrequency(l10n)) {
-                return;
-              }
-              final updated = _buildDraft();
-              if ((status == LogStatus.confirmed ||
-                      status == LogStatus.exported) &&
-                  !updated.hasRequiredFields) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.requiredFieldsMissing)),
-                );
-                return;
-              }
-              if ((status == LogStatus.confirmed ||
-                      status == LogStatus.exported) &&
-                  updated.hasUnreviewedFields) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.unreviewedFieldsRemain)),
-                );
-                return;
-              }
-              final log = ref.read(qsoLogProvider.notifier);
-              final id = widget.recordInSession
-                  ? await log.saveAndRecordInSession(updated)
-                  : await log.save(updated);
-              final importJobId = widget.importJobId;
-              if (importJobId != null) {
-                await ref
-                    .read(importJobsProvider.notifier)
-                    .attachGeneratedQso(importJobId: importJobId, qsoId: id);
-              }
-              if (context.mounted) {
-                Navigator.of(context).pop();
-              }
-            },
-            icon: const Icon(Icons.save),
-            label: Text(l10n.confirmAndSave),
-          ),
+          child: fmo
+              ? OverflowBar(
+                  alignment: MainAxisAlignment.end,
+                  spacing: 8,
+                  overflowSpacing: 8,
+                  children: [
+                    OutlinedButton(
+                      onPressed:
+                          _savingFmo ||
+                              _retrying ||
+                              status == LogStatus.confirmed ||
+                              status == LogStatus.exported
+                          ? null
+                          : () => _saveFmoReview(confirmed: false),
+                      child: Text(l10n.fmoSaveDraft),
+                    ),
+                    FilledButton(
+                      onPressed:
+                          _savingFmo ||
+                              _retrying ||
+                              !current.hasRequiredFields ||
+                              current.hasUnreviewedFields
+                          ? null
+                          : () => _saveFmoReview(confirmed: true),
+                      child: Text(l10n.confirmAndSave),
+                    ),
+                  ],
+                )
+              : FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(
+                      AppLayout.primaryActionHeight,
+                    ),
+                  ),
+                  onPressed: () async {
+                    if (!_validateFrequency(l10n)) {
+                      return;
+                    }
+                    final updated = _buildDraft();
+                    if ((status == LogStatus.confirmed ||
+                            status == LogStatus.exported) &&
+                        !updated.hasRequiredFields) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.requiredFieldsMissing)),
+                      );
+                      return;
+                    }
+                    if ((status == LogStatus.confirmed ||
+                            status == LogStatus.exported) &&
+                        updated.hasUnreviewedFields) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(l10n.unreviewedFieldsRemain)),
+                      );
+                      return;
+                    }
+                    final log = ref.read(qsoLogProvider.notifier);
+                    final id = widget.recordInSession
+                        ? await log.saveAndRecordInSession(updated)
+                        : await log.save(updated);
+                    final importJobId = widget.importJobId;
+                    if (importJobId != null) {
+                      await ref
+                          .read(importJobsProvider.notifier)
+                          .attachGeneratedQso(
+                            importJobId: importJobId,
+                            qsoId: id,
+                          );
+                    }
+                    if (context.mounted) {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  icon: const Icon(Icons.save),
+                  label: Text(l10n.confirmAndSave),
+                ),
         ),
       ),
     );
+  }
+
+  List<Widget> _radioFields(
+    BuildContext context,
+    bool fmo,
+    bool bandOrFrequencyMissing,
+  ) {
+    final l10n = context.l10n;
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
+        child: Text(
+          fmo ? l10n.fmoOptionalFields : l10n.bandOrFrequencyRequired,
+          style: Theme.of(context).textTheme.appMetadata,
+        ),
+      ),
+      _TwoColumnFields(
+        left: _FieldReviewFrame(
+          needsReview: _needsStringReview(
+            QsoFieldKey.band,
+            _baseDraft.band,
+            requiredMissing: bandOrFrequencyMissing,
+          ),
+          sourceText: _baseDraft.band.sourceText,
+          onReviewed: () => _markFieldReviewed(QsoFieldKey.band),
+          child: _BandDropdown(
+            value: _band,
+            helperText: _bandSuggested ? l10n.suggestedBand : null,
+            onChanged: (value) => setState(() {
+              _editedFields.add(QsoFieldKey.band);
+              _band = value;
+              _bandSuggested = false;
+            }),
+          ),
+        ),
+        right: _FieldReviewFrame(
+          needsReview: _needsStringReview(
+            QsoFieldKey.frequency,
+            _baseDraft.frequency,
+            requiredMissing: bandOrFrequencyMissing,
+          ),
+          sourceText: _baseDraft.frequency.sourceText,
+          onReviewed: () => _markFieldReviewed(QsoFieldKey.frequency),
+          child: TextFormField(
+            controller: _frequencyController,
+            decoration: InputDecoration(
+              labelText: l10n.frequency,
+              errorText: _frequencyError,
+              suffixText: 'MHz',
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onChanged: (value) => _handleFrequencyChanged(value, l10n),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+      _FieldReviewFrame(
+        needsReview: _needsStringReview(
+          QsoFieldKey.mode,
+          _baseDraft.mode,
+          requiredMissing: !fmo && _mode == null,
+        ),
+        sourceText: _baseDraft.mode.sourceText,
+        onReviewed: () => _markFieldReviewed(QsoFieldKey.mode),
+        child: _ModeDropdown(
+          value: _mode,
+          onChanged: (value) => setState(() {
+            _editedFields.add(QsoFieldKey.mode);
+            _mode = value;
+          }),
+        ),
+      ),
+      const SizedBox(height: 12),
+      _TwoColumnFields(
+        left: _ReviewField(
+          label: l10n.sentRst,
+          controller: _sentRstController,
+          requiredField: !fmo,
+          needsReview: _needsStringReview(
+            QsoFieldKey.sentRst,
+            _baseDraft.sentRst,
+            requiredMissing: !fmo && _sentRstController.text.trim().isEmpty,
+          ),
+          sourceText: _baseDraft.sentRst.sourceText,
+          onReviewed: () => _markFieldReviewed(QsoFieldKey.sentRst),
+          onChanged: (_) => _markFieldEdited(QsoFieldKey.sentRst),
+        ),
+        right: _ReviewField(
+          label: l10n.receivedRst,
+          controller: _receivedRstController,
+          requiredField: !fmo,
+          needsReview: _needsStringReview(
+            QsoFieldKey.receivedRst,
+            _baseDraft.receivedRst,
+            requiredMissing: !fmo && _receivedRstController.text.trim().isEmpty,
+          ),
+          sourceText: _baseDraft.receivedRst.sourceText,
+          onReviewed: () => _markFieldReviewed(QsoFieldKey.receivedRst),
+          onChanged: (_) => _markFieldEdited(QsoFieldKey.receivedRst),
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _saveFmoReview({required bool confirmed}) async {
+    final l10n = context.l10n;
+    if (_savingFmo || !_validateFrequency(l10n)) return;
+    final updated = _buildDraft().copyWith(
+      status: confirmed
+          ? LogStatus.confirmed
+          : status == LogStatus.failed
+          ? LogStatus.failed
+          : LogStatus.needsReview,
+    );
+    setState(() => _savingFmo = true);
+    try {
+      final log = ref.read(qsoLogProvider.notifier);
+      if (widget.recordInSession) {
+        await log.saveAndRecordInSession(updated);
+      } else {
+        await log.save(updated);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorLabel(context, error.toString()))),
+      );
+    } finally {
+      if (mounted) setState(() => _savingFmo = false);
+    }
   }
 
   void _handleFrequencyChanged(String value, AppLocalizations l10n) {
@@ -3938,6 +4097,8 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
       transcriptSegments: _transcriptSegments,
       errorMessage: draft.errorMessage,
       updatedAt: draft.updatedAt,
+      fmoRelayUid: draft.fmoRelayUid,
+      fmoRelayName: draft.fmoRelayName,
     );
   }
 
@@ -3996,7 +4157,7 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   }
 
   void _markFieldEdited(QsoFieldKey key) {
-    if (_editedFields.add(key)) {
+    if (_editedFields.add(key) || _baseDraft.isFmo) {
       setState(() {});
     }
   }
@@ -4034,14 +4195,25 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
   Future<void> _retryFinishQso() async {
     setState(() => _retrying = true);
     try {
-      final draft = await ref
-          .read(qsoCaptureProvider.notifier)
-          .finishQso(
-            audioPath: _audioPath,
-            startedAt: widget.draft.dateTime.value,
-            mode: TranscriptionMode.afterQso,
-            failureHandling: ref.read(failureHandlingProvider),
-          );
+      final draft = _baseDraft.isFmo
+          ? (await ref
+                    .read(qsoIntakeServiceProvider)
+                    .reviewLegacyFmoAudio(
+                      audioPath: _audioPath,
+                      startedAt: _dateTime,
+                      relayUid: _baseDraft.fmoRelayUid!,
+                      relayName:
+                          _baseDraft.fmoRelayName ?? _baseDraft.fmoRelayUid!,
+                    ))
+                .copyWith(id: _baseDraft.id)
+          : await ref
+                .read(qsoCaptureProvider.notifier)
+                .finishQso(
+                  audioPath: _audioPath,
+                  startedAt: widget.draft.dateTime.value,
+                  mode: TranscriptionMode.afterQso,
+                  failureHandling: ref.read(failureHandlingProvider),
+                );
       if (!mounted) return;
       setState(() {
         _baseDraft = draft;
@@ -4414,42 +4586,17 @@ class _QsoReviewScreenState extends ConsumerState<QsoReviewScreen> {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.number, required this.title});
+  const _SectionTitle({required this.title});
 
-  final int number;
   final String title;
 
   @override
   Widget build(BuildContext context) {
-    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Container(
-            width: 3,
-            height: 18,
-            decoration: BoxDecoration(
-              color: osc.phosphor,
-              boxShadow: [
-                BoxShadow(
-                  color: osc.phosphor.withAlpha(80),
-                  blurRadius: 6,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            '[${number.toString().padLeft(2, '0')}]',
-            style: Theme.of(
-              context,
-            ).textTheme.appMicroLabel.copyWith(color: osc.phosphorDim),
-          ),
-          const SizedBox(width: 10),
-          Text(title, style: Theme.of(context).textTheme.appSectionTitle),
-        ],
+      padding: const EdgeInsets.only(bottom: AppLayout.groupGap),
+      child: Semantics(
+        header: true,
+        child: Text(title, style: Theme.of(context).textTheme.appSectionTitle),
       ),
     );
   }
@@ -4478,14 +4625,14 @@ class _ChoiceCard<T> extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: InkWell(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: AppLayout.panelRadius,
         onTap: () => onSelected(value),
         child: Card(
           color: selected
               ? Theme.of(context).colorScheme.primaryContainer
               : null,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(AppLayout.gutter),
             child: Row(
               children: [
                 Icon(icon),
@@ -4518,59 +4665,62 @@ class _ChoiceCard<T> extends StatelessWidget {
 }
 
 class _StatusPanel extends StatelessWidget {
-  const _StatusPanel({
-    required this.title,
-    required this.elapsed,
-    required this.active,
-  });
+  const _StatusPanel({required this.session, required this.finalizing});
 
-  final String title;
-  final Duration elapsed;
-  final bool active;
+  final RecordingSessionState session;
+  final bool finalizing;
 
   @override
   Widget build(BuildContext context) {
+    final elapsed = session.elapsed;
     final minutes = elapsed.inMinutes.toString().padLeft(2, '0');
     final seconds = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
-    final osc = Theme.of(context).extension<OscilloscopeColors>()!;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final l10n = context.l10n;
-    return Semantics(
-      label:
-          '$title, ${active ? l10n.recording : l10n.startQso}, $minutes:$seconds',
-      child: Card(
-        color: active
-            ? osc.phosphor.withAlpha(20)
-            : Theme.of(context).colorScheme.surface,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    active ? Icons.fiber_manual_record : Icons.radio_button_off,
-                    size: 14,
-                    color: active ? osc.rec : osc.gridLine,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    active ? '${l10n.recording} · $title' : title,
-                    style: Theme.of(context).textTheme.appControlLabel.copyWith(
-                      color: active ? osc.amber : null,
+    final active = session.isRecording;
+    final title = switch ((active, finalizing, session.isProcessing)) {
+      (true, _, _) => l10n.recording,
+      (_, true, _) => l10n.recordingRecognition,
+      (_, _, true) => l10n.startingRecording,
+      _ => l10n.waitingToRecord,
+    };
+    final foreground = active ? colors.onPrimaryContainer : colors.onSurface;
+    return Card(
+      color: active ? colors.primaryContainer : colors.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppLayout.gutter,
+          vertical: AppLayout.sectionGap,
+        ),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  active ? Icons.fiber_manual_record : Icons.radio_button_off,
+                  size: 14,
+                  color: active ? colors.error : colors.outline,
+                ),
+                const SizedBox(width: AppLayout.smallGap),
+                Flexible(
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.appControlLabel.copyWith(
+                      color: foreground,
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '$minutes:$seconds',
-                style: Theme.of(context).textTheme.appDataDisplay.copyWith(
-                  color: active ? osc.phosphor : null,
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: AppLayout.groupGap),
+            Text(
+              '$minutes:$seconds',
+              style: theme.textTheme.appDataDisplay.copyWith(color: foreground),
+            ),
+          ],
         ),
       ),
     );
@@ -4870,98 +5020,101 @@ class _LogListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strip = bandColor(log.band.value);
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final l10n = context.l10n;
+    final strip = bandColor(log.band.value, fallback: colors.outline);
+    final metadata = theme.textTheme.appMetadata.appTabular.copyWith(
+      color: colors.onSurfaceVariant,
+    );
     final frequency = log.frequency.value.trim();
     final band = log.band.value.trim();
     final mode = log.mode.value.trim();
+    final sent = log.sentRst.value.trim();
+    final received = log.receivedRst.value.trim();
     final dateTime = log.dateTime.value;
     final meta = [
+      if (log.isFmo) 'FMO · ${log.fmoRelayName ?? log.fmoRelayUid}',
       if (frequency.isNotEmpty) '$frequency MHz',
       if (band.isNotEmpty) band,
       if (mode.isNotEmpty) mode,
     ].join(' · ');
-    return Semantics(
-      label:
-          '${log.callsign.value}, ${band.isNotEmpty ? band : "no band"}, '
-          '${mode.isNotEmpty ? mode : "no mode"}, '
-          'sent ${log.sentRst.value} received ${log.receivedRst.value}, '
-          '${_statusLabel(context, log.status)}',
-      button: true,
+    return Card(
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => QsoReviewScreen(draft: log)),
         ),
-        child: Card(
+        child: MergeSemantics(
           child: IntrinsicHeight(
             child: Row(
               children: [
                 Container(width: 4, color: strip),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(AppLayout.gutter),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
+                          flex: 4,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                log.callsign.value,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.appSectionTitle.appMonospace,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                meta.isEmpty ? '—' : meta,
-                                style: Theme.of(context)
+                                log.callsign.value.isEmpty
+                                    ? '—'
+                                    : log.callsign.value,
+                                style: theme
                                     .textTheme
-                                    .appMetadata
-                                    .appMonospace
-                                    .copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
+                                    .appSectionTitle
+                                    .appMonospace,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${log.sentRst.value} / ${log.receivedRst.value}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .appMetadata
-                                    .appMonospace
-                                    .copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
+                              if (meta.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(meta, style: metadata),
+                              ],
+                              if (sent.isNotEmpty || received.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Wrap(
+                                  spacing: AppLayout.smallGap,
+                                  runSpacing: 2,
+                                  children: [
+                                    Text(
+                                      '${l10n.sentRst} ${sent.isEmpty ? '—' : sent}',
+                                      style: metadata,
                                     ),
-                              ),
+                                    Text(
+                                      '${l10n.receivedRst} ${received.isEmpty ? '—' : received}',
+                                      style: metadata,
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ],
                           ),
                         ),
-                        if (dateTime != null) const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            _StatusChip(status: log.status),
-                            if (dateTime != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                _formatLocalDateTime(dateTime),
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .appMicroLabel
-                                    .appTabular
-                                    .copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              ),
+                        const SizedBox(width: AppLayout.smallGap),
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              _StatusChip(status: log.status),
+                              if (dateTime != null) ...[
+                                const SizedBox(height: AppLayout.smallGap),
+                                Text(
+                                  _formatLocalDateTime(dateTime),
+                                  textAlign: TextAlign.end,
+                                  style: theme
+                                      .textTheme
+                                      .appMicroLabel
+                                      .appTabular
+                                      .copyWith(color: colors.onSurfaceVariant),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ],
                     ),
@@ -5037,7 +5190,9 @@ class _LogbookUploadRow extends StatelessWidget {
       ],
     );
     final uploadButton = OutlinedButton.icon(
-      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, AppLayout.controlHeight),
+      ),
       onPressed: enabled ? onUpload : null,
       icon: busy
           ? const SizedBox.square(
@@ -5091,27 +5246,27 @@ class _SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final effectiveIconColor = theme.colorScheme.tertiary;
+    final colors = theme.colorScheme;
     return ListTile(
       minTileHeight: 80,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppLayout.gutter,
+        vertical: AppLayout.smallGap,
+      ),
       leading: Container(
-        width: 48,
-        height: 48,
+        width: AppLayout.controlHeight,
+        height: AppLayout.controlHeight,
         decoration: BoxDecoration(
-          color: effectiveIconColor.withAlpha(28),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: effectiveIconColor.withAlpha(72)),
+          color: colors.surfaceContainerHighest,
+          borderRadius: AppLayout.controlRadius,
         ),
-        child: Icon(icon, color: effectiveIconColor),
+        child: Icon(icon, color: colors.onSurfaceVariant),
       ),
       title: Text(title, style: theme.textTheme.appItemTitle),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 3),
         child: Text(
           subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.appBody.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -5127,9 +5282,9 @@ class _SettingsTile extends StatelessWidget {
 }
 
 class _SettingsPageHeader extends StatelessWidget {
-  const _SettingsPageHeader({required this.title, required this.subtitle});
+  const _SettingsPageHeader({this.title, required this.subtitle});
 
-  final String title;
+  final String? title;
   final String subtitle;
 
   @override
@@ -5138,8 +5293,10 @@ class _SettingsPageHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.appPageTitle),
-        const SizedBox(height: 8),
+        if (title case final heading?) ...[
+          Text(heading, style: theme.textTheme.appPageTitle),
+          const SizedBox(height: AppLayout.smallGap),
+        ],
         Text(
           subtitle,
           style: theme.textTheme.appLead.copyWith(
@@ -5160,10 +5317,6 @@ class _SettingsGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: BorderSide(color: theme.colorScheme.outlineVariant),
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5173,7 +5326,7 @@ class _SettingsGroup extends StatelessWidget {
         ),
         Material(
           color: theme.colorScheme.surface,
-          shape: shape,
+          shape: theme.cardTheme.shape,
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
@@ -5208,12 +5361,8 @@ class _SettingsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final shape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(20),
-      side: BorderSide(color: theme.colorScheme.outlineVariant),
-    );
     final content = Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(AppLayout.gutter),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5239,7 +5388,7 @@ class _SettingsPanel extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 18),
+            const SizedBox(height: AppLayout.gutter),
           ],
           child,
         ],
@@ -5247,7 +5396,7 @@ class _SettingsPanel extends StatelessWidget {
     );
     return Material(
       color: theme.colorScheme.surface,
-      shape: shape,
+      shape: theme.cardTheme.shape,
       clipBehavior: Clip.antiAlias,
       child: onTap == null ? content : InkWell(onTap: onTap, child: content),
     );
@@ -5263,25 +5412,13 @@ class _SettingsFormTheme extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: colors.outlineVariant),
-    );
     return Theme(
       data: theme.copyWith(
         inputDecorationTheme: theme.inputDecorationTheme.copyWith(
           filled: true,
           fillColor: colors.surfaceContainerHighest.withAlpha(90),
-          border: border,
-          enabledBorder: border,
-          disabledBorder: border.copyWith(
-            borderSide: BorderSide(color: colors.outlineVariant.withAlpha(90)),
-          ),
-          focusedBorder: border.copyWith(
-            borderSide: BorderSide(color: colors.primary, width: 2),
-          ),
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
+            horizontal: AppLayout.gutter,
             vertical: 15,
           ),
         ),
@@ -5446,7 +5583,9 @@ class _ProviderSummaryTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 56),
+        constraints: const BoxConstraints(
+          minHeight: AppLayout.primaryActionHeight,
+        ),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
@@ -5615,12 +5754,12 @@ class _FetchedModelTile extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(8, 10, 12, 12),
       decoration: BoxDecoration(
         color: model.selected
-            ? theme.colorScheme.tertiary.withAlpha(12)
+            ? theme.colorScheme.primary.withAlpha(12)
             : theme.colorScheme.surfaceContainerHighest.withAlpha(45),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: AppLayout.panelRadius,
         border: Border.all(
           color: model.selected
-              ? theme.colorScheme.tertiary.withAlpha(100)
+              ? theme.colorScheme.primary
               : theme.colorScheme.outlineVariant,
         ),
       ),
@@ -5629,7 +5768,6 @@ class _FetchedModelTile extends StatelessWidget {
         children: [
           Checkbox(
             value: model.selected,
-            activeColor: theme.colorScheme.tertiary,
             onChanged: (value) => onSelectedChanged(value ?? false),
           ),
           const SizedBox(width: 4),
@@ -5648,25 +5786,15 @@ class _FetchedModelTile extends StatelessWidget {
                   children: [
                     for (final capability in ModelCapability.values)
                       ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 56),
+                        constraints: const BoxConstraints(
+                          minHeight: AppLayout.primaryActionHeight,
+                        ),
                         child: FilterChip(
                           key: ValueKey(
                             'model-capability-${model.id}-${capability.name}',
                           ),
                           label: Text(_capabilityLabel(context, capability)),
                           visualDensity: VisualDensity.compact,
-                          selectedColor: theme.colorScheme.tertiary.withAlpha(
-                            32,
-                          ),
-                          checkmarkColor: theme.colorScheme.tertiary,
-                          side: BorderSide(
-                            color: model.capabilities.contains(capability)
-                                ? theme.colorScheme.tertiary.withAlpha(110)
-                                : theme.colorScheme.outlineVariant,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
                           selected: model.capabilities.contains(capability),
                           onSelected: (selected) {
                             final next = {...model.capabilities};
@@ -5705,7 +5833,7 @@ class _CardSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(AppLayout.gutter),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -5720,7 +5848,7 @@ class _CardSection extends StatelessWidget {
                 ?trailing,
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppLayout.groupGap),
             ...children,
           ],
         ),
@@ -5979,13 +6107,26 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _statusColor(context, status);
+    final colors = Theme.of(context).colorScheme;
+    final (background, foreground) = switch (status) {
+      LogStatus.needsReview => (
+        colors.secondaryContainer,
+        colors.onSecondaryContainer,
+      ),
+      LogStatus.confirmed => (
+        colors.primaryContainer,
+        colors.onPrimaryContainer,
+      ),
+      LogStatus.failed => (colors.errorContainer, colors.onErrorContainer),
+      _ => (colors.surface, color),
+    };
     return Chip(
       label: Text(_statusLabel(context, status)),
       side: BorderSide(color: color),
-      backgroundColor: color.withAlpha(20),
+      backgroundColor: background,
       labelStyle: Theme.of(
         context,
-      ).textTheme.appMetadata.copyWith(color: color),
+      ).textTheme.appMetadata.copyWith(color: foreground),
     );
   }
 }
@@ -6198,7 +6339,9 @@ class _CapabilityChip extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       backgroundColor: color.withAlpha(18),
       side: BorderSide(color: color.withAlpha(88)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppLayout.capsuleRadius,
+      ),
       labelStyle: Theme.of(
         context,
       ).textTheme.appMicroLabel.copyWith(color: color),
@@ -6400,13 +6543,15 @@ class _FieldReviewFrame extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final source = sourceText?.trim();
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: needsReview ? const EdgeInsets.all(12) : EdgeInsets.zero,
+      margin: const EdgeInsets.only(bottom: AppLayout.groupGap),
+      padding: needsReview
+          ? const EdgeInsets.all(AppLayout.groupGap)
+          : EdgeInsets.zero,
       decoration: needsReview
           ? BoxDecoration(
-              color: colors.errorContainer,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: colors.error),
+              color: colors.secondaryContainer,
+              borderRadius: AppLayout.panelRadius,
+              border: Border.all(color: colors.secondary),
             )
           : null,
       child: Column(
@@ -6417,21 +6562,26 @@ class _FieldReviewFrame extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               context.l10n.reviewRequired,
-              style: Theme.of(
-                context,
-              ).textTheme.appMetadata.copyWith(color: colors.error),
+              style: Theme.of(context).textTheme.appMetadata.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
             ),
             if (source?.isNotEmpty == true) ...[
               const SizedBox(height: 4),
               Text(
                 '${context.l10n.sourceExcerpt}: $source',
-                style: Theme.of(context).textTheme.appSupporting,
+                style: Theme.of(context).textTheme.appSupporting.copyWith(
+                  color: colors.onSecondaryContainer,
+                ),
               ),
             ],
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
                 onPressed: onReviewed,
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, AppLayout.primaryActionHeight),
+                ),
                 icon: const Icon(Icons.check_circle_outline),
                 label: Text(context.l10n.confirmFieldCorrect),
               ),

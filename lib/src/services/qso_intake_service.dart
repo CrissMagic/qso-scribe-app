@@ -84,6 +84,39 @@ class QsoIntakeService {
     );
   }
 
+  // Existing FMO logs can still be reprocessed from their saved recording.
+  Future<QsoDraft> reviewLegacyFmoAudio({
+    required String? audioPath,
+    required DateTime? startedAt,
+    required String relayUid,
+    required String relayName,
+  }) async {
+    QsoDraft draft;
+    try {
+      draft = audioPath == null
+          ? manualReviewDraft(dateTime: startedAt)
+          : await reviewDraftFromAudio(
+              audioPath: audioPath,
+              startedAt: startedAt,
+            );
+    } catch (error) {
+      draft = manualReviewDraft(
+        audioPath: audioPath,
+        dateTime: startedAt,
+        status: LogStatus.failed,
+        errorMessage: error.toString(),
+      );
+    }
+    return draft.copyWith(
+      callsign: draft.callsign.confidence < 0.75
+          ? draft.callsign
+          : draft.callsign.copyWith(confidence: 0.74),
+      dateTime: QsoField<DateTime?>(value: startedAt ?? draft.dateTime.value),
+      fmoRelayUid: relayUid,
+      fmoRelayName: relayName,
+    );
+  }
+
   Future<QsoDraft> applyRecognitionRetention(QsoDraft draft) async {
     if (draft.audioPath == null) {
       return draft;

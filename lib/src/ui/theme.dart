@@ -3,52 +3,40 @@ import 'package:flutter/material.dart';
 class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
   const OscilloscopeColors({
     required this.phosphor,
-    required this.phosphorDim,
-    required this.amber,
     required this.gridLine,
     required this.statusDraft,
     required this.statusReview,
     required this.statusConfirmed,
     required this.statusExported,
     required this.statusFailed,
-    required this.rec,
   });
 
   final Color phosphor;
-  final Color phosphorDim;
-  final Color amber;
   final Color gridLine;
   final Color statusDraft;
   final Color statusReview;
   final Color statusConfirmed;
   final Color statusExported;
   final Color statusFailed;
-  final Color rec;
 
   @override
   OscilloscopeColors copyWith({
     Color? phosphor,
-    Color? phosphorDim,
-    Color? amber,
     Color? gridLine,
     Color? statusDraft,
     Color? statusReview,
     Color? statusConfirmed,
     Color? statusExported,
     Color? statusFailed,
-    Color? rec,
   }) {
     return OscilloscopeColors(
       phosphor: phosphor ?? this.phosphor,
-      phosphorDim: phosphorDim ?? this.phosphorDim,
-      amber: amber ?? this.amber,
       gridLine: gridLine ?? this.gridLine,
       statusDraft: statusDraft ?? this.statusDraft,
       statusReview: statusReview ?? this.statusReview,
       statusConfirmed: statusConfirmed ?? this.statusConfirmed,
       statusExported: statusExported ?? this.statusExported,
       statusFailed: statusFailed ?? this.statusFailed,
-      rec: rec ?? this.rec,
     );
   }
 
@@ -59,15 +47,12 @@ class OscilloscopeColors extends ThemeExtension<OscilloscopeColors> {
     }
     return OscilloscopeColors(
       phosphor: Color.lerp(phosphor, other.phosphor, t)!,
-      phosphorDim: Color.lerp(phosphorDim, other.phosphorDim, t)!,
-      amber: Color.lerp(amber, other.amber, t)!,
       gridLine: Color.lerp(gridLine, other.gridLine, t)!,
       statusDraft: Color.lerp(statusDraft, other.statusDraft, t)!,
       statusReview: Color.lerp(statusReview, other.statusReview, t)!,
       statusConfirmed: Color.lerp(statusConfirmed, other.statusConfirmed, t)!,
       statusExported: Color.lerp(statusExported, other.statusExported, t)!,
       statusFailed: Color.lerp(statusFailed, other.statusFailed, t)!,
-      rec: Color.lerp(rec, other.rec, t)!,
     );
   }
 }
@@ -76,6 +61,28 @@ const _darkPhosphor = Color(0xFF4ADE80);
 const _darkAmber = Color(0xFFFBBF24);
 const _lightPhosphor = Color(0xFF047857);
 const _lightAmber = Color(0xFFB45309);
+
+abstract final class AppLayout {
+  static const smallGap = 8.0;
+  static const groupGap = 12.0;
+  static const gutter = 16.0;
+  static const sectionGap = 24.0;
+  static const controlHeight = 48.0;
+  static const primaryActionHeight = 56.0;
+  static const recordingActionHeight = 64.0;
+  static const navigationHeight = 64.0;
+  static const settingsPagePadding = EdgeInsets.fromLTRB(
+    gutter,
+    sectionGap,
+    gutter,
+    32,
+  );
+
+  static const controlRadius = BorderRadius.all(Radius.circular(8));
+  static const panelRadius = BorderRadius.all(Radius.circular(12));
+  static const modalRadius = Radius.circular(16);
+  static const capsuleRadius = BorderRadius.all(Radius.circular(999));
+}
 
 /// QSO Scribe 的统一字号阶梯。
 ///
@@ -273,14 +280,14 @@ ThemeData buildAppTheme(Brightness brightness) {
         ? const Color(0xFFFCA5A5)
         : const Color(0xFF7F1D1D),
     surface: isDark ? const Color(0xFF0F1623) : const Color(0xFFFBFDFC),
-    onSurface: isDark ? const Color(0xFFD1FAE5) : const Color(0xFF0F172A),
+    onSurface: isDark ? const Color(0xFFE2E8F0) : const Color(0xFF0F172A),
     surfaceContainerHighest: isDark
         ? const Color(0xFF1E293B)
         : const Color(0xFFF1F5F9),
     onSurfaceVariant: isDark
         ? const Color(0xFF94A3B8)
         : const Color(0xFF475569),
-    outline: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+    outline: const Color(0xFF64748B),
     outlineVariant: isDark ? const Color(0xFF1F2937) : const Color(0xFFE2E8F0),
     scrim: isDark ? const Color(0xFF000000) : const Color(0xFF0F172A),
     shadow: isDark ? const Color(0xFF000000) : const Color(0x1A000000),
@@ -288,19 +295,25 @@ ThemeData buildAppTheme(Brightness brightness) {
 
   final oscilloscope = OscilloscopeColors(
     phosphor: isDark ? _darkPhosphor : _lightPhosphor,
-    phosphorDim: isDark ? const Color(0xFF166534) : const Color(0xFFA7F3D0),
-    amber: isDark ? _darkAmber : _lightAmber,
     gridLine: isDark ? const Color(0xFF1F2937) : const Color(0xFFE2E8F0),
-    statusDraft: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+    statusDraft: colorScheme.onSurfaceVariant,
     statusReview: isDark ? _darkAmber : _lightAmber,
     statusConfirmed: isDark ? _darkPhosphor : _lightPhosphor,
-    statusExported: isDark ? const Color(0xFF22D3EE) : const Color(0xFF0891B2),
-    statusFailed: isDark ? const Color(0xFFF87171) : const Color(0xFFDC2626),
-    rec: const Color(0xFFFF5252),
+    statusExported: colorScheme.tertiary,
+    statusFailed: colorScheme.error,
   );
 
   final baseTextTheme = isDark ? Typography().white : Typography().black;
-  final textTheme = _buildAppTextTheme(baseTextTheme);
+  final textTheme = _buildAppTextTheme(
+    baseTextTheme.apply(
+      bodyColor: colorScheme.onSurface,
+      displayColor: colorScheme.onSurface,
+    ),
+  );
+  final inputBorder = OutlineInputBorder(
+    borderRadius: AppLayout.controlRadius,
+    borderSide: BorderSide(color: colorScheme.outline),
+  );
 
   return ThemeData(
     useMaterial3: true,
@@ -324,22 +337,21 @@ ThemeData buildAppTheme(Brightness brightness) {
       margin: EdgeInsets.zero,
       color: colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: AppLayout.panelRadius,
         side: BorderSide(color: oscilloscope.gridLine, width: 1),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(4),
-        borderSide: BorderSide(color: oscilloscope.gridLine),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(4),
-        borderSide: BorderSide(color: oscilloscope.gridLine),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(4),
+      border: inputBorder,
+      enabledBorder: inputBorder,
+      focusedBorder: inputBorder.copyWith(
         borderSide: BorderSide(color: colorScheme.primary, width: 2),
+      ),
+      errorBorder: inputBorder.copyWith(
+        borderSide: BorderSide(color: colorScheme.error),
+      ),
+      focusedErrorBorder: inputBorder.copyWith(
+        borderSide: BorderSide(color: colorScheme.error, width: 2),
       ),
       labelStyle: textTheme.appSupporting.copyWith(
         color: colorScheme.onSurfaceVariant,
@@ -358,15 +370,19 @@ ThemeData buildAppTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        minimumSize: const Size.fromHeight(AppLayout.controlHeight),
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppLayout.controlRadius,
+        ),
         textStyle: textTheme.appControlLabel,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        minimumSize: const Size.fromHeight(AppLayout.controlHeight),
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppLayout.controlRadius,
+        ),
         textStyle: textTheme.appControlLabel,
       ),
     ),
@@ -374,8 +390,10 @@ ThemeData buildAppTheme(Brightness brightness) {
       style: TextButton.styleFrom(textStyle: textTheme.appControlLabel),
     ),
     segmentedButtonTheme: SegmentedButtonThemeData(
-      style: ButtonStyle(
-        textStyle: WidgetStatePropertyAll(textTheme.appControlLabel),
+      style: SegmentedButton.styleFrom(
+        textStyle: textTheme.appControlLabel,
+        selectedBackgroundColor: colorScheme.primaryContainer,
+        selectedForegroundColor: colorScheme.onPrimaryContainer,
       ),
     ),
     listTileTheme: ListTileThemeData(
@@ -390,11 +408,19 @@ ThemeData buildAppTheme(Brightness brightness) {
       ),
     ),
     dialogTheme: DialogThemeData(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(AppLayout.modalRadius),
+      ),
       titleTextStyle: textTheme.appSectionTitle.copyWith(
         color: colorScheme.onSurface,
       ),
       contentTextStyle: textTheme.appBody.copyWith(
         color: colorScheme.onSurface,
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: AppLayout.modalRadius),
       ),
     ),
     tabBarTheme: TabBarThemeData(
@@ -420,9 +446,13 @@ ThemeData buildAppTheme(Brightness brightness) {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: colorScheme.surface,
+      selectedColor: colorScheme.primaryContainer,
+      checkmarkColor: colorScheme.onPrimaryContainer,
       side: BorderSide(color: oscilloscope.gridLine),
       labelStyle: textTheme.appMetadata.copyWith(color: colorScheme.onSurface),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      shape: const RoundedRectangleBorder(
+        borderRadius: AppLayout.capsuleRadius,
+      ),
     ),
     textTheme: textTheme,
   );

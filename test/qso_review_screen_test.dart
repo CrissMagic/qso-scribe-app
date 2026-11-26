@@ -8,8 +8,73 @@ import 'package:qso_scribe_app/src/data/qso_repository.dart';
 import 'package:qso_scribe_app/src/domain/app_models.dart';
 import 'package:qso_scribe_app/src/state/app_state.dart';
 import 'package:qso_scribe_app/src/ui/screens.dart';
+import 'package:qso_scribe_app/src/ui/theme.dart';
 
 void main() {
+  testWidgets('FMO review confirms a callsign and saves without RF fields', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _CapturingQsoRepository();
+    const missing = QsoField(value: '');
+    final draft = QsoDraft(
+      callsign: const QsoField(
+        value: 'K1ABC',
+        confidence: 0.74,
+        sourceText: 'Kilo One Alpha Bravo Charlie',
+      ),
+      dateTime: QsoField(value: DateTime(2026, 7, 17, 9, 30)),
+      band: missing,
+      frequency: missing,
+      mode: missing,
+      sentRst: missing,
+      receivedRst: missing,
+      fmoRelayUid: 'relay-42',
+      fmoRelayName: 'Test relay',
+      status: LogStatus.needsReview,
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSettingsProvider.overrideWith(_TestAppSettingsNotifier.new),
+          stationEquipmentProvider.overrideWith(
+            _EmptyStationEquipmentNotifier.new,
+          ),
+          qsoRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          locale: const Locale('en'),
+          theme: buildAppTheme(Brightness.light),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: QsoReviewScreen(draft: draft),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final confirm = find.widgetWithText(FilledButton, 'Confirm and save');
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    expect(find.text('Test relay'), findsOneWidget);
+    await tester.tap(find.text('Confirm correct'));
+    await tester.pump();
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    expect(repository.saved?.status, LogStatus.confirmed);
+    expect(repository.saved?.fmoRelayUid, 'relay-42');
+    expect(repository.saved?.frequency.value, isEmpty);
+  });
+
   testWidgets('低置信度字段显示来源并可显式确认', (tester) async {
     final repository = _CapturingQsoRepository();
     final draft = QsoDraft(
@@ -254,7 +319,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('K1ABC five nine'), findsNothing);
-    await tester.tap(find.text('Original transcript'));
+    await tester.tap(find.text('Raw transcript'));
     await tester.pumpAndSettle();
 
     expect(find.text('K1ABC five nine'), findsOneWidget);

@@ -37,7 +37,7 @@ class _AiModelSettingsScreenState extends ConsumerState<AiModelSettingsScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(l10n.aiModels)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        padding: AppLayout.settingsPagePadding,
         children: [
           _SettingsPageHeader(
             title: l10n.aiModels,
@@ -376,7 +376,7 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
       ),
       body: _SettingsFormTheme(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          padding: AppLayout.settingsPagePadding,
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
@@ -547,7 +547,7 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                             for (final capability in ModelCapability.values)
                               ConstrainedBox(
                                 constraints: const BoxConstraints(
-                                  minHeight: 56,
+                                  minHeight: AppLayout.primaryActionHeight,
                                 ),
                                 child: FilterChip(
                                   key: ValueKey(
@@ -557,9 +557,6 @@ class _ProviderFormScreenState extends ConsumerState<ProviderFormScreen> {
                                     _capabilityLabel(context, capability),
                                   ),
                                   visualDensity: VisualDensity.compact,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
                                   selected: _manualCapabilities.contains(
                                     capability,
                                   ),
@@ -884,7 +881,7 @@ class _ModelAssignmentScreenState extends ConsumerState<ModelAssignmentScreen> {
       appBar: AppBar(title: Text(l10n.modelAssignment)),
       body: _SettingsFormTheme(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+          padding: AppLayout.settingsPagePadding,
           children: [
             _SettingsPageHeader(
               title: l10n.modelAssignment,

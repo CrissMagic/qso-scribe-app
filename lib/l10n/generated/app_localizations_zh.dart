@@ -45,16 +45,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get transcriptionMode => '转写模式';
 
   @override
-  String get streamingMode => '实时流式转写';
+  String get streamingMode => '实时转写';
 
   @override
-  String get streamingModeDesc => '供应商支持实时流时，通联过程中实时转写。';
+  String get streamingModeDesc => '使用支持实时转写的模型，在通联时显示文字。';
 
   @override
-  String get afterQsoMode => '结束后统一识别';
+  String get afterQsoMode => '录后转写';
 
   @override
-  String get afterQsoModeDesc => '先录音，通联结束后再转写和结构化。';
+  String get afterQsoModeDesc => '先录音，结束记录后再转写并整理为 QSO 草稿。';
 
   @override
   String get failureHandling => '失败处理';
@@ -63,13 +63,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get showErrors => '立即显示错误';
 
   @override
-  String get showErrorsDesc => '转写或结构化失败时，及时暴露错误状态。';
+  String get showErrorsDesc => '转写或整理失败时显示错误。';
 
   @override
-  String get degradeSilently => '静默降级';
+  String get degradeSilently => '保留已有转写';
 
   @override
-  String get degradeSilentlyDesc => '保留已有转写，尽量不中断当前通联流程。';
+  String get degradeSilentlyDesc => '处理失败时保留已转写的内容，尽量让当前通联继续。';
 
   @override
   String get completeSetup => '完成设置';
@@ -102,7 +102,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get liveTranscript => '实时转写';
 
   @override
-  String get recordingPlaceholder => '等待音频输入...';
+  String get recordingPlaceholder => '等待音频输入…';
 
   @override
   String get draftEntry => 'QSO 草稿';
@@ -162,10 +162,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unreviewedFieldsRemain => '仍有未复核字段，不能保存为已确认状态';
 
   @override
-  String get currentStructuredDraft => '当前结构化草稿';
+  String get currentStructuredDraft => '当前 QSO 草稿';
 
   @override
-  String get structuringInProgress => '正在更新结构化结果…';
+  String get structuringInProgress => '正在整理 QSO 草稿…';
 
   @override
   String get editField => '编辑字段';
@@ -231,13 +231,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importAudio => '导入录音文件';
 
   @override
-  String get importAudioDesc => '选择 WAV、M4A 或 MP3 音频进行识别。';
+  String get importAudioDesc => '选择 WAV、M4A 或 MP3 音频进行转写。';
 
   @override
   String get importText => '粘贴或导入文本';
 
   @override
-  String get importTextDesc => '粘贴原始转写或随记文本并结构化 QSO。';
+  String get importTextDesc => '粘贴原始转写或随记文本，整理为 QSO 草稿。';
 
   @override
   String get recentImports => '最近导入';
@@ -252,7 +252,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get format => '格式';
 
   @override
-  String get rawTranscript => '原始文本';
+  String get rawTranscript => '原始转写文本';
 
   @override
   String get selectedForExport => '条 QSO 将被导出';
@@ -264,13 +264,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerManagement => '供应商管理';
 
   @override
-  String get providerManagementDesc => 'API Key 与 endpoint';
+  String get providerManagementDesc => '管理 API Key 和服务地址';
 
   @override
   String get modelAssignment => '模型分配';
 
   @override
-  String get modelAssignmentDesc => '为转录和整理分配模型';
+  String get modelAssignmentDesc => '为转写和 QSO 整理分配模型';
 
   @override
   String get modelSettingsOverviewDesc => '查看工作流分配、模型能力和服务配置';
@@ -300,7 +300,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get localDataManagementDesc => '备份与清理';
 
   @override
-  String get transcriptionModel => '转录模型';
+  String get transcriptionModel => '转写模型';
 
   @override
   String get structuringModel => 'QSO 整理模型';
@@ -384,7 +384,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get keepAudio => '默认保留原始音频';
 
   @override
-  String get deleteAudioAfterRecognition => '识别完成后删除音频';
+  String get deleteAudioAfterRecognition => '转写完成后删除音频';
 
   @override
   String get deleteAudioAfterConfirmation => '日志确认后删除音频';
@@ -399,7 +399,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get providerSaved => '供应商已保存';
 
   @override
-  String get modelAssignmentRequired => '请分别选择转录模型和整理模型';
+  String get modelAssignmentRequired => '请选择转写模型和 QSO 整理模型';
 
   @override
   String get modelAssignmentSaved => '模型分配已保存';
@@ -423,7 +423,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noAudioFile => '未保留音频文件';
 
   @override
-  String get originalAudioDeleted => '原始音频已在识别后删除';
+  String get originalAudioDeleted => '原始音频已在转写后删除';
 
   @override
   String get playAudio => '播放音频';
@@ -444,7 +444,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get unknownStation => '待确认';
 
   @override
-  String get unrecognizedSpeech => '未识别到文字';
+  String get unrecognizedSpeech => '未转写出文字';
 
   @override
   String get switchToMyStation => '标记为我方';
@@ -468,10 +468,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get modelSaved => '模型已保存';
 
   @override
-  String get streamingAdapterNotConfigured => '实时流式转写适配器尚未配置；可结束后进入复核并手动补全';
+  String get streamingAdapterNotConfigured => '尚未配置实时转写服务。结束记录后，可在复核页手动补全字段。';
 
   @override
-  String get streamingConnectionFailed => '实时转写连接失败，录音未开始；请手动切换为结束后识别。';
+  String get streamingConnectionFailed => '实时转写连接失败，录音未开始。可切换到录后转写再试。';
 
   @override
   String get streamingConnectionClosed => '实时转写连接已中断，本地录音已保留。';
@@ -483,26 +483,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get microphonePermissionDenied => '麦克风权限未授予';
 
   @override
-  String get noTranscriptionModelAssigned => '尚未分配转录模型';
+  String get noTranscriptionModelAssigned => '尚未分配转写模型';
 
   @override
-  String get assignedTranscriptionProviderMissing => '已分配的转录供应商不存在';
+  String get assignedTranscriptionProviderMissing => '找不到转写模型的供应商';
 
   @override
-  String get transcriptionModelWithoutSpeech => '已分配的转录模型不支持语音能力';
+  String get transcriptionModelWithoutSpeech => '所选转写模型不支持语音能力';
 
   @override
-  String get providerNotOpenAiCompatibleHttp =>
-      '该供应商首版暂不支持 OpenAI-compatible HTTP 转录';
+  String get providerNotOpenAiCompatibleHttp => '该供应商不支持兼容 OpenAI 的 HTTP 转写接口';
 
   @override
   String get audioFileMissing => '音频文件不存在';
 
   @override
-  String get transcriptionRequestFailed => '转录请求失败';
+  String get transcriptionRequestFailed => '转写请求失败';
 
   @override
-  String get transcriptionResponseMissingText => '转录响应中没有文本内容';
+  String get transcriptionResponseMissingText => '转写服务未返回文字';
 
   @override
   String get assignedStructuringProviderMissing => '已分配的整理供应商不存在';
@@ -511,16 +510,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get structuringModelWithoutCapability => '已分配的整理模型不支持结构化能力';
 
   @override
-  String get structuringRequestFailed => '结构化请求失败';
+  String get structuringRequestFailed => 'QSO 整理请求失败';
 
   @override
-  String get structuringResponseMissingJson => '结构化响应中没有有效 JSON';
+  String get structuringResponseMissingJson => 'QSO 整理服务未返回有效的 JSON';
 
   @override
   String get bandOrFrequencyRequired => '波段或频率至少填写一项';
 
   @override
   String get clearFilters => '清除筛选';
+
+  @override
+  String get noLogs => '暂无 QSO 日志，可导入录音或文本。';
 
   @override
   String get noLogsMatchFilters => '没有符合当前筛选条件的日志';
@@ -579,7 +581,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get clearAllRawTranscriptsConfirm =>
-      '清除 QSO 日志和导入记录中的原始转写文本？结构化 QSO 字段会保留。';
+      '清除 QSO 日志和导入记录中的原始转写？已填写的 QSO 字段会保留。';
 
   @override
   String get localDataCleanupComplete => '本地数据清理已完成';
@@ -595,7 +597,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '删除这条 App 保留的音频文件并清空日志引用？App 存储目录外的音频文件不会被删除。';
 
   @override
-  String get deleteRawTranscriptConfirm => '清除这条原始转写文本？结构化 QSO 字段会保留。';
+  String get deleteRawTranscriptConfirm => '清除这条原始转写？已填写的 QSO 字段会保留。';
 
   @override
   String get noConfiguredProviders => '尚未添加供应商。请先添加供应商，再分配模型。';
@@ -829,7 +831,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get paste => '粘贴';
 
   @override
-  String get transcriptionModelAfter => '后置转写模型';
+  String get transcriptionModelAfter => '录后转写模型';
 
   @override
   String get transcriptionModelStreaming => '实时转写模型';
@@ -862,10 +864,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get clearRecordsConfirm => '确认清除所有 Token 消耗记录？';
 
   @override
-  String get taskTranscription => '后置转写';
+  String get taskTranscription => '录后转写';
 
   @override
-  String get taskStructuring => '结构化';
+  String get taskStructuring => 'QSO 整理';
 
   @override
   String get taskStreaming => '实时转写';
@@ -979,7 +981,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get recording => '录音中';
 
   @override
-  String get afterTranscribe => '后置转写';
+  String get afterTranscribe => '录后转写';
 
   @override
   String get realtimeTranscribe => '实时转写';
@@ -992,6 +994,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiModels => 'AI 模型';
+
+  @override
+  String get transcriptionAndStructuring => '转写与整理';
 
   @override
   String get aiModelsDesc => '供应商和模型配置';
@@ -1009,7 +1014,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get discardAndRestart => '丢弃，重新录音';
 
   @override
-  String get afterQsoRecorderHint => '正在录音，停止后音频将自动转写并结构化。';
+  String get afterQsoRecorderHint => '结束记录后，音频会转写并整理为 QSO 草稿。';
 
   @override
   String get streamingStoppedHint => '录音已停止';
@@ -1099,4 +1104,34 @@ class AppLocalizationsZh extends AppLocalizations {
   ) {
     return '当前 ASR 模型（$provider）可能不支持 .$format 格式。支持格式：$supported。是否继续？';
   }
+
+  @override
+  String get fmoRelay => 'FMO 中继';
+
+  @override
+  String get startRecording => '开始记录';
+
+  @override
+  String get endRecording => '结束记录';
+
+  @override
+  String get waitingToRecord => '等待开始';
+
+  @override
+  String get startingRecording => '正在启动录音…';
+
+  @override
+  String get recordingRecognition => '录音已结束，正在处理…';
+
+  @override
+  String get fmoOptionalFields => 'FMO 记录的频率、波段、模式和 RST 为选填。';
+
+  @override
+  String get fmoAdifExcluded => 'FMO 记录可导出为 CSV 或原始转写文本。';
+
+  @override
+  String get fmoSaveDraft => '保存草稿';
+
+  @override
+  String get fmoRadioFields => '频率、模式与 RST（选填）';
 }

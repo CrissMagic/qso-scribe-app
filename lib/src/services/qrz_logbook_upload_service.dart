@@ -46,7 +46,7 @@ class QrzLogbookUploadService {
     if (apiKey.trim().isEmpty) {
       throw const QrzUploadException(QrzUploadFailureReason.missingApiKey);
     }
-    if (!qso.hasRequiredFields) {
+    if (qso.isFmo || !qso.hasRequiredFields) {
       throw const QrzUploadException(
         QrzUploadFailureReason.requiredFieldsMissing,
       );

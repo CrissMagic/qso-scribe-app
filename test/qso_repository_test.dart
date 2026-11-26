@@ -14,6 +14,29 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
+  test('FMO relay metadata survives saving without radio fields', () async {
+    final database = _QsoDatabase();
+    final repository = QsoRepository(AppDatabase(database: database));
+    final existing = (await repository.findQso('qso-1'))!;
+    const missing = QsoField(value: '');
+    final fmo = existing.copyWith(
+      band: missing,
+      frequency: missing,
+      mode: missing,
+      sentRst: missing,
+      receivedRst: missing,
+      fmoRelayUid: 'relay-42',
+      fmoRelayName: 'Test relay',
+    );
+    expect(fmo.hasRequiredFields, isTrue);
+    await repository.saveQso(fmo);
+    final saved = (await repository.findQso('qso-1'))!;
+    expect(saved.isFmo, isTrue);
+    expect(saved.fmoRelayUid, 'relay-42');
+    expect(saved.fmoRelayName, 'Test relay');
+    expect(saved.frequency.value, isEmpty);
+  });
+
   test('editing a saved QSO updates in place and marks QRZ stale', () async {
     final database = _QsoDatabase();
     final qsoRepository = QsoRepository(AppDatabase(database: database));

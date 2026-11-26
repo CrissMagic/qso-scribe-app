@@ -8,7 +8,7 @@ class AppDatabase {
       _databasePath = databasePath;
 
   static const databaseName = 'qso_scribe.db';
-  static const databaseVersion = 11;
+  static const databaseVersion = 12;
 
   Database? _database;
   final String? _databasePath;
@@ -76,6 +76,14 @@ class AppDatabase {
     if (oldVersion < 11) {
       await _migrateToV11(db);
     }
+    if (oldVersion < 12) {
+      final columns = await db.rawQuery('PRAGMA table_info(qso_logs)');
+      for (final name in ['fmo_relay_uid', 'fmo_relay_name']) {
+        if (!columns.any((row) => row['name'] == name)) {
+          await db.execute('ALTER TABLE qso_logs ADD COLUMN $name TEXT');
+        }
+      }
+    }
   }
 
   static Future<void> _createCoreTables(DatabaseExecutor db) async {
@@ -118,6 +126,8 @@ CREATE TABLE IF NOT EXISTS qso_logs (
   callsign_user_edited INTEGER NOT NULL,
   callsign_source_text TEXT,
   qso_datetime TEXT,
+  fmo_relay_uid TEXT,
+  fmo_relay_name TEXT,
   band TEXT NOT NULL,
   frequency TEXT NOT NULL,
   mode TEXT NOT NULL,

@@ -138,6 +138,8 @@ class QsoDraft {
     this.transcriptSegments = const [],
     this.errorMessage,
     this.updatedAt,
+    this.fmoRelayUid,
+    this.fmoRelayName,
   });
 
   final String? id;
@@ -160,6 +162,10 @@ class QsoDraft {
   final String? rawTranscript;
   final List<TranscriptSegment> transcriptSegments;
   final DateTime? updatedAt;
+  final String? fmoRelayUid;
+  final String? fmoRelayName;
+
+  bool get isFmo => fmoRelayUid != null;
 
   /// 处理提示（不持久化到数据库）。
   final String? errorMessage;
@@ -167,10 +173,12 @@ class QsoDraft {
   bool get hasRequiredFields {
     return callsign.value.trim().isNotEmpty &&
         dateTime.value != null &&
-        (band.value.trim().isNotEmpty || frequency.value.trim().isNotEmpty) &&
-        mode.value.trim().isNotEmpty &&
-        sentRst.value.trim().isNotEmpty &&
-        receivedRst.value.trim().isNotEmpty;
+        (isFmo ||
+            ((band.value.trim().isNotEmpty ||
+                    frequency.value.trim().isNotEmpty) &&
+                mode.value.trim().isNotEmpty &&
+                sentRst.value.trim().isNotEmpty &&
+                receivedRst.value.trim().isNotEmpty));
   }
 
   bool get hasUnreviewedFields =>
@@ -210,6 +218,8 @@ class QsoDraft {
     List<TranscriptSegment>? transcriptSegments,
     String? errorMessage,
     DateTime? updatedAt,
+    String? fmoRelayUid,
+    String? fmoRelayName,
     bool clearAudioPath = false,
     bool clearRawTranscript = false,
     bool clearErrorMessage = false,
@@ -259,6 +269,8 @@ class QsoDraft {
           ? null
           : errorMessage ?? this.errorMessage,
       updatedAt: updatedAt ?? this.updatedAt,
+      fmoRelayUid: fmoRelayUid ?? this.fmoRelayUid,
+      fmoRelayName: fmoRelayName ?? this.fmoRelayName,
     );
   }
 

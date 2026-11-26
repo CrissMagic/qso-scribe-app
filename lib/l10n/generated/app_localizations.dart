@@ -173,25 +173,25 @@ abstract class AppLocalizations {
   /// No description provided for @streamingMode.
   ///
   /// In en, this message translates to:
-  /// **'Real-time streaming'**
+  /// **'Real-time transcription'**
   String get streamingMode;
 
   /// No description provided for @streamingModeDesc.
   ///
   /// In en, this message translates to:
-  /// **'Transcribe audio during the QSO when the provider supports streaming.'**
+  /// **'Show text during the QSO with a model that supports real-time transcription.'**
   String get streamingModeDesc;
 
   /// No description provided for @afterQsoMode.
   ///
   /// In en, this message translates to:
-  /// **'Recognize after QSO'**
+  /// **'Transcribe after recording'**
   String get afterQsoMode;
 
   /// No description provided for @afterQsoModeDesc.
   ///
   /// In en, this message translates to:
-  /// **'Record first, then transcribe and structure after the QSO ends.'**
+  /// **'Record first. After you stop, the app transcribes the audio and prepares a QSO draft.'**
   String get afterQsoModeDesc;
 
   /// No description provided for @failureHandling.
@@ -209,19 +209,19 @@ abstract class AppLocalizations {
   /// No description provided for @showErrorsDesc.
   ///
   /// In en, this message translates to:
-  /// **'Surface transcription or structuring errors during the workflow.'**
+  /// **'Show an error if transcription or QSO structuring fails.'**
   String get showErrorsDesc;
 
   /// No description provided for @degradeSilently.
   ///
   /// In en, this message translates to:
-  /// **'Degrade silently'**
+  /// **'Keep partial transcript'**
   String get degradeSilently;
 
   /// No description provided for @degradeSilentlyDesc.
   ///
   /// In en, this message translates to:
-  /// **'Keep partial transcript and let the operator finish the contact.'**
+  /// **'Keep any text already transcribed and continue the QSO when possible.'**
   String get degradeSilentlyDesc;
 
   /// No description provided for @completeSetup.
@@ -287,7 +287,7 @@ abstract class AppLocalizations {
   /// No description provided for @recordingPlaceholder.
   ///
   /// In en, this message translates to:
-  /// **'Waiting for audio input...'**
+  /// **'Waiting for audio input…'**
   String get recordingPlaceholder;
 
   /// No description provided for @draftEntry.
@@ -407,13 +407,13 @@ abstract class AppLocalizations {
   /// No description provided for @currentStructuredDraft.
   ///
   /// In en, this message translates to:
-  /// **'Current structured draft'**
+  /// **'Current QSO draft'**
   String get currentStructuredDraft;
 
   /// No description provided for @structuringInProgress.
   ///
   /// In en, this message translates to:
-  /// **'Updating structured fields…'**
+  /// **'Updating QSO draft…'**
   String get structuringInProgress;
 
   /// No description provided for @editField.
@@ -587,7 +587,7 @@ abstract class AppLocalizations {
   /// No description provided for @rawTranscript.
   ///
   /// In en, this message translates to:
-  /// **'Raw text'**
+  /// **'Raw transcript text'**
   String get rawTranscript;
 
   /// No description provided for @selectedForExport.
@@ -779,7 +779,7 @@ abstract class AppLocalizations {
   /// No description provided for @originalTranscript.
   ///
   /// In en, this message translates to:
-  /// **'Original transcript'**
+  /// **'Raw transcript'**
   String get originalTranscript;
 
   /// No description provided for @confirmAndSave.
@@ -1025,7 +1025,7 @@ abstract class AppLocalizations {
   /// No description provided for @streamingConnectionFailed.
   ///
   /// In en, this message translates to:
-  /// **'The real-time transcription connection failed, so recording did not start. Switch to recognition after QSO manually.'**
+  /// **'Real-time transcription could not connect. Recording did not start. Switch to transcription after recording and try again.'**
   String get streamingConnectionFailed;
 
   /// No description provided for @streamingConnectionClosed.
@@ -1123,6 +1123,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Clear filters'**
   String get clearFilters;
+
+  /// No description provided for @noLogs.
+  ///
+  /// In en, this message translates to:
+  /// **'No QSO logs yet. Import audio or text to get started.'**
+  String get noLogs;
 
   /// No description provided for @noLogsMatchFilters.
   ///
@@ -1733,7 +1739,7 @@ abstract class AppLocalizations {
   /// No description provided for @transcriptionModelAfter.
   ///
   /// In en, this message translates to:
-  /// **'After-QSO transcription model'**
+  /// **'Model for transcription after recording'**
   String get transcriptionModelAfter;
 
   /// No description provided for @transcriptionModelStreaming.
@@ -1799,13 +1805,13 @@ abstract class AppLocalizations {
   /// No description provided for @taskTranscription.
   ///
   /// In en, this message translates to:
-  /// **'Transcription'**
+  /// **'Transcribe after recording'**
   String get taskTranscription;
 
   /// No description provided for @taskStructuring.
   ///
   /// In en, this message translates to:
-  /// **'Structuring'**
+  /// **'QSO structuring'**
   String get taskStructuring;
 
   /// No description provided for @taskStreaming.
@@ -2033,7 +2039,7 @@ abstract class AppLocalizations {
   /// No description provided for @afterTranscribe.
   ///
   /// In en, this message translates to:
-  /// **'After QSO'**
+  /// **'After recording'**
   String get afterTranscribe;
 
   /// No description provided for @realtimeTranscribe.
@@ -2059,6 +2065,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'AI models'**
   String get aiModels;
+
+  /// No description provided for @transcriptionAndStructuring.
+  ///
+  /// In en, this message translates to:
+  /// **'Transcription and structuring'**
+  String get transcriptionAndStructuring;
 
   /// No description provided for @aiModelsDesc.
   ///
@@ -2093,7 +2105,7 @@ abstract class AppLocalizations {
   /// No description provided for @afterQsoRecorderHint.
   ///
   /// In en, this message translates to:
-  /// **'Recording in progress. Audio will be transcribed and structured after you stop.'**
+  /// **'When you stop recording, the app transcribes the audio and prepares a QSO draft.'**
   String get afterQsoRecorderHint;
 
   /// No description provided for @streamingStoppedHint.
@@ -2255,6 +2267,66 @@ abstract class AppLocalizations {
     String format,
     String supported,
   );
+
+  /// No description provided for @fmoRelay.
+  ///
+  /// In en, this message translates to:
+  /// **'FMO relay'**
+  String get fmoRelay;
+
+  /// No description provided for @startRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Start recording'**
+  String get startRecording;
+
+  /// No description provided for @endRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'End recording'**
+  String get endRecording;
+
+  /// No description provided for @waitingToRecord.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to record'**
+  String get waitingToRecord;
+
+  /// No description provided for @startingRecording.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting recording…'**
+  String get startingRecording;
+
+  /// No description provided for @recordingRecognition.
+  ///
+  /// In en, this message translates to:
+  /// **'Recording ended. Processing…'**
+  String get recordingRecognition;
+
+  /// No description provided for @fmoOptionalFields.
+  ///
+  /// In en, this message translates to:
+  /// **'Frequency, band, mode and RST are optional for FMO records.'**
+  String get fmoOptionalFields;
+
+  /// No description provided for @fmoAdifExcluded.
+  ///
+  /// In en, this message translates to:
+  /// **'FMO records are available as CSV or transcript text.'**
+  String get fmoAdifExcluded;
+
+  /// No description provided for @fmoSaveDraft.
+  ///
+  /// In en, this message translates to:
+  /// **'Save draft'**
+  String get fmoSaveDraft;
+
+  /// No description provided for @fmoRadioFields.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional radio fields'**
+  String get fmoRadioFields;
 }
 
 class _AppLocalizationsDelegate
