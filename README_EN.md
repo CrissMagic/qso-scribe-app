@@ -89,21 +89,21 @@ GitHub Actions builds production releases. Update [`CHANGELOG.md`](./CHANGELOG.m
 The tag must exactly match the `pubspec.yaml` version:
 
 ```text
-version: 0.1.6+7
-tag: v0.1.6+7
+version: 0.1.7+8
+tag: v0.1.7+8
 ```
 
 ```bash
 git push origin main
-git push origin v0.1.6+7
+git push origin v0.1.7+8
 ```
 
-`+7` is the internal Android build number. The app and GitHub Release title only show `0.1.6`.
+`+8` is the internal Android build number. The app and GitHub Release title only show `0.1.7`.
 
 The release asset uses this name:
 
 ```text
-qso-scribe-app-0.1.6-build7-android.apk
+qso-scribe-app-0.1.7-build8-android.apk
 ```
 
 ## Project Structure

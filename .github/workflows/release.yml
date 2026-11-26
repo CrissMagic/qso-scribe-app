@@ -107,3 +107,5 @@ jobs:
           name: ${{ steps.version.outputs.build_name }}
           body_path: RELEASE_NOTES.md
           files: build/release/${{ steps.version.outputs.asset_name }}
+          fail_on_unmatched_files: true
+          overwrite_files: false
